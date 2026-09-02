@@ -4,8 +4,9 @@ Personal site. Static HTML assembled from `src/` by a 60-line build script; no f
 
 ```
 src/
+  site.json            name, email, LinkedIn, resume path, domain, year: written once, used everywhere as {{email}} etc.
   layout.html          the shell every page shares (head, header slot, content slot, footer, scripts)
-  partials/            header-site.html, header-ask.html, footer.html, contact-links.html
+  partials/            logo, header-site, header-ask, footer, contact-links
   pages/               one file per page: a JSON metadata comment, then the page's <main>
   css/  js/  assets/   copied to the output unchanged
 build/
@@ -29,12 +30,11 @@ Edit under `src/`, never under `website/`; the next build overwrites it.
 Create `src/pages/name.html` starting with a metadata comment:
 ```
 <!-- meta
-{ "path": "name.html", "title": "...", "description": "...", "og_title": "...", "og_description": "...",
-  "header": "header-site", "current": "", "scripts": ["js/site.js"] }
+{ "path": "name.html", "title": "...", "description": "...", "header": "header-site", "scripts": ["js/site.js"] }
 -->
 <main>...</main>
 ```
-`{{partial:contact-links}}` inlines a partial. `current` is the nav item to mark as the current page.
+`{{partial:contact-links}}` inlines a partial; `{{email}}`, `{{linkedin}}`, `{{resume}}` come from `site.json`. Optional fields: `current` (nav item to mark as the current page), `og_title` and `og_description` (default to title and description), `module_scripts`.
 
 ## Before publishing
 - Replace every `TODO` and `[bracketed]` placeholder under `src/` (`grep -rn "TODO\|\[" src/pages`).

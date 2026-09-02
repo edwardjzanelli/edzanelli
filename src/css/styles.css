@@ -122,7 +122,6 @@ strong { font-weight: 500; color: var(--ink); }
 }
 .btn-primary:hover { color: #fff; box-shadow: 0 6px 24px rgba(31, 111, 120, 0.4); }
 .btn[disabled] { opacity: 0.5; cursor: default; transform: none; }
-.text-link { font-weight: 400; }
 
 /* Rows of plain serif links, as the contact links on seniorminder.com */
 .links { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 0.6rem 2rem; }

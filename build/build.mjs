@@ -8,7 +8,8 @@
 // Output goes to website/, which Amplify serves. website/ is build output and is not committed.
 //
 // Placeholders:
-//   {{name}}             a value from the page's metadata block (title, path, ...)
+//   {{name}}             a value from src/site.json (email, linkedin, resume, ...) or the page's metadata block
+//                        (title, description, path). og_title and og_description fall back to title and description.
 //   {{header}}           the partial named by the page's "header" field
 //   {{footer}}           partials/footer.html
 //   {{content}}          the page body
@@ -25,6 +26,7 @@ const src = join(root, "src");
 const out = join(root, "website");
 
 const read = (p) => readFileSync(p, "utf8");
+const site = JSON.parse(read(join(src, "site.json")));
 const partial = (name) => read(join(src, "partials", `${name}.html`)).trimEnd();
 
 function expand(text, meta) {
@@ -37,7 +39,14 @@ function render(pageFile) {
   const raw = read(join(src, "pages", pageFile));
   const m = raw.match(/^<!-- meta\n([\s\S]*?)\n-->\n/);
   if (!m) throw new Error(`${pageFile}: missing metadata block`);
-  const meta = JSON.parse(m[1]);
+  const page = JSON.parse(m[1]);
+  const meta = {
+    ...site,
+    og_title: page.title,
+    og_description: page.description,
+    current: "",
+    ...page,
+  };
   const content = raw.slice(m[0].length).trimEnd();
 
   const scripts = [
