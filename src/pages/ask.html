@@ -50,10 +50,10 @@
     </div>
     <p class="status" id="status" role="status" aria-live="polite"></p>
 
-    <form class="composer" id="composer" hidden>
-      <label class="visually-hidden" for="text">Type a question</label>
-      <input id="text" type="text" autocomplete="off" placeholder="Or type a question and press Enter">
-      <button class="btn" type="submit">Send</button>
+    <form class="composer" id="composer">
+      <label class="visually-hidden" for="text">Type or paste a question</label>
+      <input id="text" type="text" autocomplete="off" placeholder="Type or paste a question" disabled>
+      <button class="btn" id="send" type="submit" disabled>Send</button>
     </form>
 
     <section class="transcript" id="transcript" aria-label="Transcript" aria-live="polite"></section>

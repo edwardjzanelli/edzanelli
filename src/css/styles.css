@@ -167,6 +167,10 @@ main { flex: 1; position: relative; z-index: 2; }
 .grid-3 { display: grid; grid-template-columns: 1fr; gap: 1.5rem; }
 .work .tag { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-light); margin-bottom: 0.75rem; }
 
+.roles { list-style: none; margin: 0 0 1rem; }
+.roles li { padding: 0.35rem 0; border-bottom: 1px solid var(--rule-soft); font-size: 0.97rem; }
+.roles li:last-child { border-bottom: 0; }
+
 /* Availability */
 .availability { text-align: center; }
 .availability .lead { max-width: 36em; margin: 0 auto 2rem; }
@@ -223,6 +227,7 @@ figcaption { font-size: 0.9rem; color: var(--ink-light); text-align: center; mar
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 .composer input:focus { border-color: var(--teal); box-shadow: 0 0 0 3px rgba(31, 111, 120, 0.12); }
+.composer input:disabled { opacity: 0.5; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .transcript { margin-top: 1.25rem; max-height: 320px; overflow-y: auto; border-top: 1px solid var(--rule-soft); }
 .transcript:empty { display: none; }

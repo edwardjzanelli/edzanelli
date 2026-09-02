@@ -25,12 +25,14 @@ const el = {
   status: document.getElementById("status"),
   composer: document.getElementById("composer"),
   text: document.getElementById("text"),
+  send: document.getElementById("send"),
   transcript: document.getElementById("transcript"),
 };
 
 let session = null;      // the live LiveAvatarSession, or null
 let busy = false;        // true while starting or stopping
 let currentLlm = null;   // label for the avatar turns of the live session
+let speaking = false;    // true between avatar.speak_started and avatar.speak_ended
 
 // ---------- UI helpers ----------
 
@@ -39,10 +41,12 @@ function setStatus(text) { el.status.textContent = text; }
 function setControls(live) {
   el.start.hidden = live;
   el.stop.hidden = !live;
-  el.composer.hidden = !live;
   el.poster.hidden = live;
   el.start.disabled = busy;
   el.stop.disabled = busy;
+  // The text box is usable only in a live session; Send is also held while the avatar is talking.
+  el.text.disabled = !live;
+  el.send.disabled = !live || speaking;
 }
 
 function addTurn(role, text, label) {
@@ -118,6 +122,7 @@ async function stop(reason) {
   const s = session;
   session = null;
   busy = true;
+  speaking = false;
   setControls(true);
   setStatus(reason || "Ending");
   try { await s.stop(); } catch (err) { console.warn("stop error", err); }
@@ -144,6 +149,7 @@ function wire(s) {
     if (session !== s) return; // we already stopped it
     session = null;
     busy = false;
+    speaking = false;
     el.video.srcObject = null;
     setControls(false);
     setStatus(
@@ -155,8 +161,8 @@ function wire(s) {
 
   s.on(AgentEventsEnum.USER_SPEAK_STARTED, () => setStatus("Hearing you"));
   s.on(AgentEventsEnum.USER_SPEAK_ENDED, () => setStatus("Thinking"));
-  s.on(AgentEventsEnum.AVATAR_SPEAK_STARTED, () => setStatus("Speaking (" + currentLlm + ")"));
-  s.on(AgentEventsEnum.AVATAR_SPEAK_ENDED, () => setStatus("Listening"));
+  s.on(AgentEventsEnum.AVATAR_SPEAK_STARTED, () => { speaking = true; el.send.disabled = true; setStatus("Speaking (" + currentLlm + ")"); });
+  s.on(AgentEventsEnum.AVATAR_SPEAK_ENDED, () => { speaking = false; el.send.disabled = false; setStatus("Listening"); });
 
   s.on(AgentEventsEnum.USER_TRANSCRIPTION, (e) => addTurn("user", e.text));
   s.on(AgentEventsEnum.AVATAR_TRANSCRIPTION, (e) => addTurn("avatar", e.text, currentLlm));
@@ -178,7 +184,7 @@ for (const sel of [el.avatar, el.language, el.llm]) {
 el.composer.addEventListener("submit", (ev) => {
   ev.preventDefault();
   const text = el.text.value.trim();
-  if (!text || !session) return;
+  if (!text || !session || speaking) return;
   addTurn("user", text);
   try { session.message(text); } catch (err) { console.warn("message failed", err); }
   el.text.value = "";
