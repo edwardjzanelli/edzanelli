@@ -1,0 +1,18 @@
+{
+  "_comment": "Allow-lists for the token Lambda. Spec v1.2 section 10. Fill every empty string from the LiveAvatar dashboard. Keys are what the page sends; nothing else is accepted.",
+  "maxSessionDurationSeconds": 180,
+  "avatars": {
+    "ed":      { "avatar_id": "", "voice": { "en": "", "it": "" } },
+    "judy":    { "avatar_id": "", "voice": { "en": "", "it": "" } },
+    "dexter": { "avatar_id": "", "voice": { "en": "", "it": "" } }
+  },
+  "languages": {
+    "en": { "language": "en", "context_id": "" },
+    "it": { "language": "it", "context_id": "" }
+  },
+  "llms": {
+    "openai": { "llm_configuration_id": "" },
+    "claude": { "llm_configuration_id": "" },
+    "gemini": { "llm_configuration_id": "" }
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "name": "edzanelli",
+  "private": true,
+  "version": "1.2.0",
+  "description": "edzanelli.com. Static site assembled from src/ by build/build.mjs; the only dependency is esbuild, which bundles the LiveAvatar SDK for the Ask page.",
+  "scripts": {
+    "build:site": "node build/build.mjs",
+    "build:sdk": "esbuild build/sdk-entry.js --bundle --format=esm --platform=browser --minify --outfile=website/js/vendor/liveavatar.esm.js",
+    "build": "npm run build:site && npm run build:sdk",
+    "serve": "npx --yes serve website -l 8080"
+  },
+  "devDependencies": {
+    "@heygen/liveavatar-web-sdk": "0.0.18",
+    "esbuild": "^0.24.0"
+  }
+}

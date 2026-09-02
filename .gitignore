@@ -1,0 +1,5 @@
+node_modules/
+website/
+.env
+.env.*
+*.zip
