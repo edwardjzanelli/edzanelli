@@ -1,5 +1,0 @@
-OPENING INTRO
-Ciao, sono l'avatar AI di Ed. Chiedimi qualsiasi cosa, oppure chiedimi dell'esperienza di Ed e di cosa ha costruito.
-
-FULL PROMPT
-[TODO: Italian translation of ask-ed-en.txt, with "Respond in Italian." Same facts section.]

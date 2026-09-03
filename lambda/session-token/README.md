@@ -5,7 +5,7 @@ Mints a LiveAvatar FULL-mode session token for the Ask Ed page. Spec v1.2 sectio
 Files: `index.mjs` (handler), `config.json` (allow-lists and IDs). No dependencies; Node 20 has `fetch` built in.
 
 ## One-time setup in the LiveAvatar dashboard
-1. Contexts: create `ask-ed-en` and `ask-ed-it` from `prompts/`. Copy their IDs into `config.json`.
+1. Context: create `Ask Ed` from `prompts/ask-ed.txt`. Copy its ID into `config.json` as `context_id`. One context serves both languages; the prompt tells the avatar to answer in the visitor's language.
 2. Avatars and voices: copy the three avatar IDs and the voice IDs (one per language) into `config.json`.
 3. LLMs: for each of OpenAI, Anthropic, Google, store the vendor key as a secret, then create an LLM configuration (base_url and model_name from spec section 10). Copy the three configuration IDs into `config.json`.
 4. Try each LLM configuration in a dashboard session before deploying.

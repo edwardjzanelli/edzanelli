@@ -4,7 +4,8 @@
 // Environment:
 //   LIVEAVATAR_API_KEY   required. The only secret this function holds.
 //   ALLOWED_ORIGINS      comma-separated, e.g. "https://edzanelli.com,http://localhost:8080"
-//   SANDBOX              "1" to mint sandbox sessions (no credits), anything else for live.
+//   SANDBOX              "1" to mint sandbox sessions (no credits; stock avatars only), anything else for live.
+//   DEBUG                "1" to include LiveAvatar's status and message in a 502 response. Unset for launch.
 //
 // CORS response headers are set on the function URL configuration, not here (see README).
 // This code only refuses requests whose Origin is not on the list.
@@ -44,7 +45,7 @@ export const handler = async (event) => {
   if (!avatar || !language || !llm) return json(400, { error: "avatar, language, or llm not on the allow-list" });
 
   const voiceId = avatar.voice[req.language];
-  if (!avatar.avatar_id || !voiceId || !language.context_id || !llm.llm_configuration_id) {
+  if (!avatar.avatar_id || !voiceId || !CONFIG.context_id || !llm.llm_configuration_id) {
     return json(503, { error: "this combination is not configured yet" });
   }
 
@@ -53,7 +54,7 @@ export const handler = async (event) => {
     avatar_id: avatar.avatar_id,
     avatar_persona: {
       voice_id: voiceId,
-      context_id: language.context_id,
+      context_id: CONFIG.context_id,
       language: language.language,
     },
     llm_configuration_id: llm.llm_configuration_id,
@@ -65,7 +66,7 @@ export const handler = async (event) => {
   try {
     res = await fetch(TOKEN_URL, {
       method: "POST",
-      headers: { "x-api-key": apiKey, "content-type": "application/json", accept: "application/json" },
+      headers: { "X-API-KEY": apiKey, "content-type": "application/json", accept: "application/json" },
       body: JSON.stringify(body),
     });
     text = await res.text();
@@ -75,9 +76,11 @@ export const handler = async (event) => {
   }
 
   if (!res.ok) {
-    // Log the vendor's message for Ed; give the visitor nothing vendor-specific.
+    // Log the vendor's message; the visitor gets nothing vendor-specific unless DEBUG is set,
+    // which returns the detail to make setup problems visible without CloudWatch.
     console.error("token request rejected", res.status, text.slice(0, 500));
-    return json(502, { error: "avatar service refused the session" });
+    const detail = process.env.DEBUG === "1" ? { vendor_status: res.status, vendor_message: text.slice(0, 300) } : {};
+    return json(502, { error: "avatar service refused the session", ...detail });
   }
 
   let data;

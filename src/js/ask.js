@@ -10,7 +10,7 @@ import {
   SessionDisconnectReason,
 } from "./vendor/liveavatar.esm.js";
 
-const TOKEN_URL = ""; // TODO: the Lambda FunctionUrl from lambda/session-token/README.md, no trailing slash
+const TOKEN_URL = "https://bw7rxcyn7l47nrc2f3ors4bwzi0mqzhp.lambda-url.us-west-1.on.aws"; // Lambda function URL, see lambda/session-token/README.md
 
 const LLM_LABELS = { openai: "OpenAI", claude: "Claude", gemini: "Gemini" };
 
@@ -185,7 +185,8 @@ el.composer.addEventListener("submit", (ev) => {
   ev.preventDefault();
   const text = el.text.value.trim();
   if (!text || !session || speaking) return;
-  addTurn("user", text);
+  // Not added to the transcript here: the SDK echoes typed text back as a user.transcription
+  // event, which is what adds the turn (adding it here too printed it twice).
   try { session.message(text); } catch (err) { console.warn("message failed", err); }
   el.text.value = "";
 });

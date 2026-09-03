@@ -1,18 +1,24 @@
 {
-  "_comment": "Allow-lists for the token Lambda. Spec v1.2 section 10. Fill every empty string from the LiveAvatar dashboard. Keys are what the page sends; nothing else is accepted.",
+  "_comment": "Allow-lists for the token Lambda. Spec v1.2 section 10. Keys are what the page sends; nothing else is accepted. One context serves every language; the token's language field sets speech recognition and voice.",
   "maxSessionDurationSeconds": 180,
+  "context_id": "430a8177-8515-414b-89d6-fe9e37df7588",
   "avatars": {
-    "ed":      { "avatar_id": "", "voice": { "en": "", "it": "" } },
-    "judy":    { "avatar_id": "", "voice": { "en": "", "it": "" } },
-    "dexter": { "avatar_id": "", "voice": { "en": "", "it": "" } }
+    "ed":     { "avatar_id": "13d85ed3-b344-4fe2-a721-b2c02fce8d3b", "voice": { "en": "898b8377-bcd9-4856-91c7-0b36c93c4d50", "it": "898b8377-bcd9-4856-91c7-0b36c93c4d50" } },
+    "judy":   { "avatar_id": "0f563214-1cb5-4dc0-a2f9-43f44e5e6b57", "voice": { "en": "4f3b1e99-b580-4f05-9b67-a5f585be0232", "it": "4f3b1e99-b580-4f05-9b67-a5f585be0232" } },
+    "dexter": { "avatar_id": "5761a14c-8720-4ce1-8c2b-3f351718fc79", "voice": { "en": "b952f553-f7f3-4e52-8625-86b4c415384f", "it": "b952f553-f7f3-4e52-8625-86b4c415384f" } }
   },
   "languages": {
-    "en": { "language": "en", "context_id": "" },
-    "it": { "language": "it", "context_id": "" }
+    "en": { "language": "en" },
+    "it": { "language": "it" }
   },
   "llms": {
-    "openai": { "llm_configuration_id": "" },
-    "claude": { "llm_configuration_id": "" },
-    "gemini": { "llm_configuration_id": "" }
-  }
+    "openai": {
+      "llm_configuration_id": "675b288c-9979-4c26-8965-a0080b66289d"
+    },
+    "claude": {
+      "llm_configuration_id": "b9d0213f-1c41-42bf-8193-0258f3993ffd"
+    },
+    "gemini": {
+      "llm_configuration_id": "9bd44cc9-82a5-45b0-9f1f-ca6f198b02ad"
+    }
 }

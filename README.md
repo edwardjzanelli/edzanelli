@@ -13,7 +13,7 @@ build/
   build.mjs            assembles src/ into website/
   sdk-entry.js         what esbuild bundles for the Ask page (the LiveAvatar SDK)
 lambda/session-token/  the one server piece: mints LiveAvatar session tokens for the Ask page
-prompts/               the avatar's context prompts, versioned here, pasted into the LiveAvatar dashboard
+prompts/               the avatar's context prompt, versioned here, pasted into the LiveAvatar dashboard
 docs/                  design documents
 website/               BUILD OUTPUT. Not committed. This is what Amplify serves.
 ```
@@ -40,7 +40,7 @@ Create `src/pages/name.html` starting with a metadata comment:
 - Replace every `TODO` and `[bracketed]` placeholder under `src/` (`grep -rn "TODO\|\[" src/pages`).
 - Put `Ed_Zanelli_Resume.pdf` in `src/assets/` and the two photos in `src/assets/img/` (portrait.webp, candid.webp), then swap the placeholder divs in `src/pages/index.html` and `about.html` for the `<img>` tags in the adjacent comments.
 - Set `TOKEN_URL` in `src/js/ask.js` to the Lambda function URL (see `lambda/session-token/README.md`).
-- Paste `prompts/ask-ed-en.txt` and `prompts/ask-ed-it.txt` into the two LiveAvatar contexts.
+- Paste `prompts/ask-ed.txt` into the LiveAvatar context (one context serves both languages).
 
 ## Hosting (AWS Amplify)
 `amplify.yml` runs `npm ci && npm run build` and serves `website/`. Custom domain `edzanelli.com` with `www` redirected to the apex; `ask.edzanelli.com` added as a subdomain with a 301 redirect rule to `https://edzanelli.com/ask.html`.
