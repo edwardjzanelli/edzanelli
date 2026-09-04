@@ -238,6 +238,8 @@ figcaption { font-size: 0.9rem; color: var(--ink-light); text-align: center; mar
 .turn-divider { padding: 0.6rem 0 0.25rem; font-size: 0.82rem; color: var(--ink-light); font-style: italic; }
 .disclosure, .fallback { font-size: 0.9rem; color: var(--ink-light); text-align: center; margin: 0; }
 .disclosure { margin-top: 1.5rem; }
+.note { font-size: 0.85rem; color: var(--ink-light); text-align: center; margin: 0.75rem 0 0; opacity: 0.85; }
+.caps { font-variant: small-caps; letter-spacing: 0.04em; }
 .ask-cta { text-align: center; margin-top: 2.5rem; }
 .ask-cta p { margin-bottom: 1rem; }
 
