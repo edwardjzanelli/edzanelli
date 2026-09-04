@@ -34,7 +34,7 @@ Create `src/pages/name.html` starting with a metadata comment:
 -->
 <main>...</main>
 ```
-`{{partial:contact-links}}` inlines a partial; `{{email}}`, `{{linkedin}}`, `{{resume}}` come from `site.json`. Optional fields: `current` (nav item to mark as the current page), `og_title` and `og_description` (default to title and description), `module_scripts`.
+`{{partial:contact-links}}` inlines a partial; `{{email}}`, `{{linkedin}}`, `{{resume}}` come from `site.json`. Optional fields: `current` (nav item to mark as the current page), `og_title` and `og_description` (default to title and description), `og_image` (defaults to `assets/og-image.jpg`), `module_scripts`.
 
 ## Before publishing
 - Replace every `TODO` and `[bracketed]` placeholder under `src/` (`grep -rn "TODO\|\[" src/pages`).

@@ -9,7 +9,8 @@
 //
 // Placeholders:
 //   {{name}}             a value from src/site.json (email, linkedin, resume, ...) or the page's metadata block
-//                        (title, description, path). og_title and og_description fall back to title and description.
+//                        (title, description, path). og_title and og_description fall back to title and
+//                        description; og_image falls back to assets/og-image.jpg.
 //   {{header}}           the partial named by the page's "header" field
 //   {{footer}}           partials/footer.html
 //   {{content}}          the page body
@@ -44,6 +45,7 @@ function render(pageFile) {
     ...site,
     og_title: page.title,
     og_description: page.description,
+    og_image: "assets/og-image.jpg",
     current: "",
     ...page,
   };
