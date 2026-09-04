@@ -12,14 +12,18 @@ const API = "https://api.liveavatar.com/v1";
 const key = process.env.LIVEAVATAR_API_KEY;
 if (!key) { console.error("LIVEAVATAR_API_KEY is not set"); process.exit(1); }
 
+// Models: pick the low-latency, non-thinking model at each vendor; a thinking model deliberates
+// long enough that LiveAvatar stops waiting for the reply and the avatar says nothing.
 // base_url: each vendor's OpenAI-compatible root. LiveAvatar appends the /chat/completions route.
+// The Anthropic key must be a workspace key, not one linked to a person: identity-linked keys demand an
+// extra header on every call that LiveAvatar does not send.
 // secret_type is OPENAI_API_KEY for all three: the key is sent as a bearer token to base_url, so the
 // vendor does not matter, and the API has no Anthropic type (accepted values are OPENAI_API_KEY,
 // ELEVENLABS_API_KEY, GEMINI_API_KEY, FISH_API_KEY, CARTESIA_API_KEY).
 const VENDORS = [
   { id: "openai", name: "Ask Ed OpenAI", env: "OPENAI_API_KEY",    model: "gpt-4o-mini",      base_url: "https://api.openai.com/v1" },
   { id: "claude", name: "Ask Ed Claude", env: "ANTHROPIC_API_KEY", model: "claude-sonnet-4-6", base_url: "https://api.anthropic.com/v1" },
-  { id: "gemini", name: "Ask Ed Gemini", env: "GEMINI_API_KEY",    model: "gemini-2.5-flash", base_url: "https://generativelanguage.googleapis.com/v1beta/openai" },
+  { id: "gemini", name: "Ask Ed Gemini", env: "GEMINI_API_KEY",    model: "gemini-3.5-flash-lite", base_url: "https://generativelanguage.googleapis.com/v1beta/openai" },
 ];
 
 async function post(path, body) {
