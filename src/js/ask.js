@@ -12,7 +12,7 @@ import {
 
 const TOKEN_URL = "https://bw7rxcyn7l47nrc2f3ors4bwzi0mqzhp.lambda-url.us-west-1.on.aws"; // Lambda function URL, see lambda/session-token/README.md
 
-const LLM_LABELS = { openai: "OpenAI", claude: "Claude", gemini: "Gemini" };
+const LLM_LABELS = { openai: "ChatGPT", claude: "Claude", gemini: "Gemini" };
 
 const el = {
   avatar: document.getElementById("avatar"),
