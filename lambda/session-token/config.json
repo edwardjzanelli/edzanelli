@@ -16,10 +16,10 @@
       "llm_configuration_id": "675b288c-9979-4c26-8965-a0080b66289d"
     },
     "claude": {
-      "llm_configuration_id": "b9d0213f-1c41-42bf-8193-0258f3993ffd"
+      "llm_configuration_id": "29022f7a-2c5f-4635-8e7b-7f6576a501d8"
     },
     "gemini": {
-      "llm_configuration_id": "9bd44cc9-82a5-45b0-9f1f-ca6f198b02ad"
+      "llm_configuration_id": "6e375d9b-0951-42b8-920d-d77cf4199024"
     }
   }
 }
