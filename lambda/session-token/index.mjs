@@ -1,5 +1,6 @@
 // Ask Ed token Lambda. Spec v1.2 sections 7 and 8.
-// POST { avatar, language, llm } -> { session_id, session_token }
+// POST { avatar, language, llm, speed? } -> { session_id, session_token }
+//   speed: speaking speed 0.80 to 1.20 in steps of 0.05; defaults to config voiceSpeed, then 1.
 //
 // Environment:
 //   LIVEAVATAR_API_KEY   required. The only secret this function holds.
@@ -44,6 +45,13 @@ export const handler = async (event) => {
   const llm = CONFIG.llms[req.llm];
   if (!avatar || !language || !llm) return json(400, { error: "avatar, language, or llm not on the allow-list" });
 
+  // Speaking speed: LiveAvatar accepts 0.8 to 1.2; the page offers 0.05 steps. Anything else is rejected.
+  let speed = req.speed ?? CONFIG.voiceSpeed ?? 1;
+  if (typeof speed !== "number" || speed < 0.8 || speed > 1.2 || Math.round(speed * 100) % 5 !== 0) {
+    return json(400, { error: "speed must be 0.80 to 1.20 in steps of 0.05" });
+  }
+  speed = Math.round(speed * 100) / 100;
+
   const voiceId = avatar.voice[req.language];
   if (!avatar.avatar_id || !voiceId || !CONFIG.context_id || !llm.llm_configuration_id) {
     return json(503, { error: "this combination is not configured yet" });
@@ -56,6 +64,7 @@ export const handler = async (event) => {
       voice_id: voiceId,
       context_id: CONFIG.context_id,
       language: language.language,
+      voice_settings: { speed },
     },
     llm_configuration_id: llm.llm_configuration_id,
     max_session_duration: CONFIG.maxSessionDurationSeconds,

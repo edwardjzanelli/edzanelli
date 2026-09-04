@@ -18,6 +18,7 @@ const el = {
   avatar: document.getElementById("avatar"),
   language: document.getElementById("language"),
   llm: document.getElementById("llm"),
+  speed: document.getElementById("speed"),
   start: document.getElementById("start"),
   stop: document.getElementById("stop"),
   video: document.getElementById("video"),
@@ -71,11 +72,11 @@ function addDivider(text) {
 }
 
 function selection() {
-  return { avatar: el.avatar.value, language: el.language.value, llm: el.llm.value };
+  return { avatar: el.avatar.value, language: el.language.value, llm: el.llm.value, speed: Number(el.speed.value) };
 }
 
 function describe(sel) {
-  return `${el.avatar.options[el.avatar.selectedIndex].text}, ${el.language.options[el.language.selectedIndex].text}, answers by ${LLM_LABELS[sel.llm]}`;
+  return `${el.avatar.options[el.avatar.selectedIndex].text}, ${el.language.options[el.language.selectedIndex].text}, answers by ${LLM_LABELS[sel.llm]}, speed ${sel.speed.toFixed(2)}`;
 }
 
 // ---------- session lifecycle ----------
@@ -173,7 +174,7 @@ function wire(s) {
 el.start.addEventListener("click", start);
 el.stop.addEventListener("click", () => stop("Ended"));
 
-for (const sel of [el.avatar, el.language, el.llm]) {
+for (const sel of [el.avatar, el.language, el.llm, el.speed]) {
   sel.addEventListener("change", async () => {
     if (!session) return;
     await stop("Switching");
