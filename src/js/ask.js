@@ -12,7 +12,7 @@ import {
 
 const TOKEN_URL = "https://bw7rxcyn7l47nrc2f3ors4bwzi0mqzhp.lambda-url.us-west-1.on.aws"; // Lambda function URL, see lambda/session-token/README.md
 
-const LLM_LABELS = { openai: "ChatGPT", claude: "Claude", gemini: "Gemini" };
+const LLM_LABELS = { openai: "OpenAI", claude: "Claude", gemini: "Gemini" };
 
 const el = {
   avatar: document.getElementById("avatar"),
@@ -31,9 +31,19 @@ const el = {
 };
 
 let session = null;      // the live LiveAvatarSession, or null
+let startPromise = null; // the in-flight s.start(), so stop() can wait for it before stopping
 let busy = false;        // true while starting or stopping
 let currentLlm = null;   // label for the avatar turns of the live session
 let speaking = false;    // true between avatar.speak_started and avatar.speak_ended
+
+// Every start, stop and restart runs through this queue, one at a time, so a selector change
+// during a connect can never leave two sessions alive.
+let queue = Promise.resolve();
+let restartQueued = false;
+function enqueue(fn) {
+  queue = queue.then(fn, fn);
+  return queue;
+}
 
 // ---------- UI helpers ----------
 
@@ -107,11 +117,14 @@ async function start() {
     const s = new LiveAvatarSession(token, { voiceChat: true });
     wire(s);
     session = s;
-    await s.start();
+    startPromise = s.start();
+    await startPromise;
+    startPromise = null;
     // stream_ready attaches the video; state CONNECTED flips the controls.
   } catch (err) {
     console.error("start failed", err);
     session = null;
+    startPromise = null;
     busy = false;
     setControls(false);
     setStatus("The demo is unavailable right now. " + (err.message || ""));
@@ -126,11 +139,21 @@ async function stop(reason) {
   speaking = false;
   setControls(true);
   setStatus(reason || "Ending");
+  // The SDK ignores stop() while start() is still running; wait for it first.
+  if (startPromise) { try { await startPromise; } catch { /* start already reported */ } startPromise = null; }
   try { await s.stop(); } catch (err) { console.warn("stop error", err); }
+  detach();
   busy = false;
-  el.video.srcObject = null;
   setControls(false);
   setStatus(reason || "Ended");
+}
+
+function detach() {
+  el.video.srcObject = null;
+  // The SDK attaches audio to media elements it creates; make sure none survive a stop.
+  for (const m of document.querySelectorAll("audio, video")) {
+    if (m !== el.video && m.srcObject) { m.srcObject = null; m.remove(); }
+  }
 }
 
 function wire(s) {
@@ -149,9 +172,10 @@ function wire(s) {
   s.on(SessionEvent.SESSION_DISCONNECTED, (why) => {
     if (session !== s) return; // we already stopped it
     session = null;
+    startPromise = null;
     busy = false;
     speaking = false;
-    el.video.srcObject = null;
+    detach();
     setControls(false);
     setStatus(
       why === SessionDisconnectReason.SESSION_START_FAILED ? "The avatar could not start. Try again."
@@ -171,14 +195,21 @@ function wire(s) {
 
 // ---------- wiring ----------
 
-el.start.addEventListener("click", start);
-el.stop.addEventListener("click", () => stop("Ended"));
+el.start.addEventListener("click", () => enqueue(start));
+el.stop.addEventListener("click", () => enqueue(() => stop("Ended")));
 
+// A change while live restarts with the new settings. A second change while that restart is
+// still queued does not queue another; the queued restart reads the selectors when it runs.
 for (const sel of [el.avatar, el.language, el.llm, el.speed]) {
-  sel.addEventListener("change", async () => {
-    if (!session) return;
-    await stop("Switching");
-    start();
+  sel.addEventListener("change", () => {
+    if (!session && !busy) return;
+    if (restartQueued) return;
+    restartQueued = true;
+    enqueue(async () => {
+      restartQueued = false;
+      await stop("Switching");
+      await start();
+    });
   });
 }
 
