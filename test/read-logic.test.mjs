@@ -3,8 +3,11 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 import { buttonState, splitScript, CHUNK_LIMIT } from "../src/js/read-logic.js";
+
+const READ_JS = readFileSync(new URL("../src/js/read.js", import.meta.url), "utf8");
 
 const idle = { live: false, busy: false };
 const connecting = { live: false, busy: true };
@@ -44,6 +47,32 @@ test("a finished read returns the button to Go", () => {
   assert.equal(during.label, "Stop");
   assert.equal(after.label, "Go");
   assert.equal(after.disabled, false);
+});
+
+/* The tail is control flow inside read.js, which needs a DOM and the bundled SDK and so cannot be
+   imported here. These are source checks, not behavioural ones: they pin the constant and the fact
+   that it is applied in exactly one place, on the natural end of a read and nowhere else. The
+   behaviour itself is Ed's live check. */
+
+test("TAIL_MS is 2000 and is actually used", () => {
+  assert.match(READ_JS, /const TAIL_MS = 2000;/, "TAIL_MS must be declared as 2000 in read.js");
+  const uses = READ_JS.match(/TAIL_MS/g) ?? [];
+  assert.equal(uses.length, 2, "TAIL_MS should be declared once and applied once; a second use means a new delay");
+});
+
+test("the tail is on the natural end of a read, and Stop never waits", () => {
+  const stopRead = READ_JS.match(/function stopRead\(\) \{[\s\S]*?\n\}/);
+  assert.ok(stopRead, "stopRead must exist to be checked");
+  assert.doesNotMatch(stopRead[0], /TAIL_MS|setTimeout/, "Stop must tear the session down immediately");
+
+  const readScript = READ_JS.match(/async function readScript\([\s\S]*?\n\}/);
+  assert.ok(readScript, "readScript must exist to be checked");
+  assert.match(readScript[0], /TAIL_MS/, "the tail belongs on the natural end of the read");
+});
+
+test("the existing bounds are unchanged by the tail", () => {
+  assert.match(READ_JS, /const SPEAK_TIMEOUT_MS = 20000;/);
+  assert.match(READ_JS, /const READ_TIMEOUT_MS = 30000;/);
 });
 
 test("a script within the limit is one piece, untouched", () => {

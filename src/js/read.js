@@ -15,6 +15,9 @@ import { buttonState, splitScript } from "./read-logic.js";
 
 const SPEAK_TIMEOUT_MS = 20000; // longest wait for one chunk's avatar.speak_ended before moving on
 const READ_TIMEOUT_MS = 30000;  // longest the whole read may hang after the last chunk was sent
+// avatar.speak_ended tracks buffer processing, not playout, and leads the audio by about half a
+// second (SeniorMinder spike 18445c98), so the last words are still playing when it arrives.
+const TAIL_MS = 2000;
 
 const el = {
   avatar: document.getElementById("avatar"),
@@ -129,6 +132,13 @@ async function readScript(text) {
   clearTimeout(readDeadline);
   readDeadline = null;
   if (run !== generation) return;
+
+  // The read is over as far as the SDK is concerned, but the audio is not. Hold the session open
+  // for the tail so the last words finish playing, then end it. This is the natural end only:
+  // Stop tears the session down at once and never waits for this.
+  await new Promise((resolve) => setTimeout(resolve, TAIL_MS));
+  if (run !== generation) return; // Stop landed during the tail; it has already ended the session
+
   finish("Done");
 }
 
