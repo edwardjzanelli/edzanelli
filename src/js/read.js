@@ -96,6 +96,22 @@ function cancelRead() {
   if (pendingSpeakEnd) pendingSpeakEnd("cancelled");
 }
 
+/* Every piece of per-read state, cleared at the start of a read rather than only when one ends.
+
+   Clearing on the way out is not enough: it assumes every exit path runs, and one does not.
+   stopRequested was only ever reset in onStarting, which runs inside the session module's start()
+   and so sits behind its "already busy or live" guard. Any start that hit that guard left the flag
+   set with nothing to clear it again, and from then on every session connected and then declined to
+   speak, because onConnected reads that flag. Resetting here instead cannot be skipped. */
+function resetReadState() {
+  generation++;                                   // abandon anything a previous read left running
+  clearTimeout(readDeadline);
+  readDeadline = null;
+  if (pendingSpeakEnd) pendingSpeakEnd("cancelled");
+  pendingSpeakEnd = null;
+  stopRequested = false;
+}
+
 // Ends the session and settles the status line. A stop asked for while the token is still being
 // fetched is queued behind the start, so busy counts as something to stop; with nothing running at
 // all there is only the status line to set.
@@ -151,7 +167,9 @@ const avatar = createAvatarSession({
   request: selection,
   onState: setControls,
   onStatus: setStatus,
-  onStarting: (req) => { script = req.script; stopRequested = false; },
+  // A start really is happening: take the script it was started for, and clear the state again in
+  // case this start came from anywhere but the Go button.
+  onStarting: (req) => { script = req.script; resetReadState(); },
   onConnected: () => {
     if (stopRequested) return; // Stop landed while connecting; the queued stop does the rest
     setStatus("Reading");
@@ -170,6 +188,9 @@ const avatar = createAvatarSession({
 el.go.addEventListener("click", () => {
   if (isActive()) { stopRead(); return; }
   if (!el.script.value.trim()) return;
+  // The start of a read, and the one place a reset cannot be skipped: the module's start() can
+  // decline to run, and the second Go of a session that did so must not inherit the first's state.
+  resetReadState();
   avatar.queueStart();
 });
 

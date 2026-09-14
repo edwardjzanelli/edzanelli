@@ -143,6 +143,10 @@ export function createAvatarSession(options) {
   async function start() {
     if (busy || session) return;
     busy = true;
+    // Per-session state, cleared on the way in as well as on the way out: a start must never
+    // inherit anything from the session before it, whatever path ended that one.
+    speaking = false;
+    startPromise = null;
     const req = request();
     emit(false);
     onStatus("Connecting");

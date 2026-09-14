@@ -75,6 +75,63 @@ test("the existing bounds are unchanged by the tail", () => {
   assert.match(READ_JS, /const READ_TIMEOUT_MS = 30000;/);
 });
 
+test("two consecutive reads: Go, Stop while reading, Go again", () => {
+  // The page is used this way: read, wait for Done, press Go again on the same text. The button
+  // must come all the way back, not stay stuck on the first read's ending state.
+  const text = { hasText: true };
+  const sequence = [
+    ["idle before the first read", { ...idle, ...text }, { label: "Go", disabled: false }],
+    ["connecting", { ...connecting, ...text }, { label: "Stop", disabled: false }],
+    ["reading", { ...reading, ...text }, { label: "Stop", disabled: false }],
+    ["tearing down at Done", { ...stopping, ...text }, { label: "Stop", disabled: false }],
+    ["idle at Done", { ...idle, ...text }, { label: "Go", disabled: false }],
+    ["connecting again", { ...connecting, ...text }, { label: "Stop", disabled: false }],
+    ["reading again", { ...reading, ...text }, { label: "Stop", disabled: false }],
+    ["idle at the second Done", { ...idle, ...text }, { label: "Go", disabled: false }],
+  ];
+  for (const [step, input, expected] of sequence) {
+    assert.deepEqual(buttonState(input), expected, `wrong button at: ${step}`);
+  }
+});
+
+/* The reset itself is control flow in read.js and cannot be exercised here, so these pin that it
+   exists, that it clears every piece of per-read state, and that it runs at the start of a read
+   rather than only when one ends. A second read actually speaking is Ed's live check. */
+
+test("resetReadState clears every piece of per-read state", () => {
+  const fn = READ_JS.match(/function resetReadState\(\) \{[\s\S]*?\n\}/);
+  assert.ok(fn, "resetReadState must exist");
+  for (const piece of ["generation", "readDeadline", "pendingSpeakEnd", "stopRequested"]) {
+    assert.match(fn[0], new RegExp(piece), `resetReadState must clear ${piece}`);
+  }
+});
+
+test("the reset runs at the start of a read, not only at the end", () => {
+  // Go calls it before queueStart, so a start the session module declines still leaves clean state.
+  const goHandler = READ_JS.match(/el\.go\.addEventListener\([\s\S]*?\n\}\);/);
+  assert.ok(goHandler, "the Go handler must exist");
+  assert.match(goHandler[0], /resetReadState\(\)[\s\S]*queueStart\(\)/, "reset must precede queueStart");
+
+  // And onStarting covers any start that did not come from the button.
+  assert.match(READ_JS, /onStarting:[^\n]*resetReadState\(\)/);
+});
+
+test("stopRequested is no longer cleared only on the way in to onStarting", () => {
+  // The wedge this fixes: the flag was set by Stop and cleared in one place that a bailed start
+  // skipped, so it stayed set and every later session connected without speaking.
+  const setTrue = READ_JS.match(/stopRequested = true/g) ?? [];
+  assert.equal(setTrue.length, 1, "only stopRead should set stopRequested");
+
+  const stopRead = READ_JS.match(/function stopRead\(\) \{[\s\S]*?\n\}/);
+  assert.match(stopRead[0], /stopRequested = true/, "stopRead is what sets it");
+
+  const reset = READ_JS.match(/function resetReadState\(\) \{[\s\S]*?\n\}/);
+  assert.match(reset[0], /stopRequested = false/, "the reset is what clears it");
+
+  // onStarting must no longer be the only place it is cleared.
+  assert.doesNotMatch(READ_JS, /onStarting:[^\n]*stopRequested = false/);
+});
+
 test("a script within the limit is one piece, untouched", () => {
   const script = "Hello there. This is a short script.";
   assert.deepEqual(splitScript(script), [script]);
