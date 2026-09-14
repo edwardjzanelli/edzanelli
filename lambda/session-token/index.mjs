@@ -1,5 +1,5 @@
 // Token Lambda for the Ask and Read pages. Spec v1.2 sections 7 and 8.
-// POST { mode?, avatar, language, llm?, speed?, script? } -> { session_id, session_token }
+// POST { mode?, avatar, language?, llm?, speed?, script? } -> { session_id, session_token }
 //   mode:   "ask" (the default) mints a FULL session carrying the context and an LLM configuration:
 //           the avatar listens and answers.
 //           "read" mints a FULL session with NO context_id and NO llm_configuration_id. Omitting
@@ -9,6 +9,10 @@
 //           LITE is deliberately NOT used. It validates only avatar_id and ignores voice_id, and a
 //           LITE session carries no vendor text-to-speech at all: the client is expected to supply
 //           its own PCM. repeat() on a LITE session produced no speech and no events.
+//   language: required in ask mode, where it sets speech recognition. Optional in read mode and
+//           defaults to en: the voice is multilingual and reads English or Italian either way, and
+//           read mode never listens, so there is nothing for the field to govern. The Read page
+//           has no language selector and sends none.
 //   speed:  speaking speed 0.80 to 1.20 in steps of 0.05; defaults to config voiceSpeed, then 1.
 //   script: read mode only, required there. The text the avatar will read; 1500 characters at most.
 //
@@ -129,8 +133,13 @@ export const handler = async (event) => {
     }
   }
 
+  // Read mode has no language selector: the voice is multilingual and reads whatever it is given,
+  // and the token's language field only governs speech recognition, which read mode never uses.
+  // So language is optional there and defaults to en. A language that is sent is still checked.
+  const languageKey = mode === "read" ? req.language ?? "en" : req.language;
+
   const avatar = CONFIG.avatars[req.avatar];
-  const language = CONFIG.languages[req.language];
+  const language = CONFIG.languages[languageKey];
   const llm = mode === "read" ? null : CONFIG.llms[req.llm];
   if (!avatar || !language || (mode === "ask" && !llm)) {
     return json(400, { error: "avatar, language, or llm not on the allow-list" });
@@ -143,7 +152,7 @@ export const handler = async (event) => {
   }
   speed = Math.round(speed * 100) / 100;
 
-  const voiceId = avatar.voice[req.language];
+  const voiceId = avatar.voice[languageKey];
   const configured = mode === "read"
     ? avatar.avatar_id && voiceId
     : avatar.avatar_id && voiceId && CONFIG.context_id && llm.llm_configuration_id;
@@ -214,6 +223,6 @@ export const handler = async (event) => {
     return json(502, { error: "unexpected response from avatar service" });
   }
 
-  console.log(`minted session ${payload.session_id} mode=${mode} token=${body.mode}${mode === "read" ? " (no context)" : ""} avatar=${req.avatar} lang=${req.language} llm=${mode === "read" ? "-" : req.llm} sandbox=${body.is_sandbox}`);
+  console.log(`minted session ${payload.session_id} mode=${mode} token=${body.mode}${mode === "read" ? " (no context)" : ""} avatar=${req.avatar} lang=${languageKey} llm=${mode === "read" ? "-" : req.llm} sandbox=${body.is_sandbox}`);
   return json(200, { session_id: payload.session_id, session_token: payload.session_token });
 };

@@ -21,7 +21,6 @@ const TAIL_MS = 2000;
 
 const el = {
   avatar: document.getElementById("avatar"),
-  language: document.getElementById("language"),
   speed: document.getElementById("speed"),
   script: document.getElementById("script"),
   counter: document.getElementById("counter"),
@@ -55,7 +54,6 @@ function selection() {
   return {
     mode: "read",
     avatar: el.avatar.value,
-    language: el.language.value,
     speed: Number(el.speed.value),
     script: el.script.value.trim(),
   };
@@ -178,7 +176,7 @@ el.go.addEventListener("click", () => {
 el.script.addEventListener("input", render);
 
 // Changing a setting while a read is running is a Stop. Nothing restarts on its own.
-for (const sel of [el.avatar, el.language, el.speed]) {
+for (const sel of [el.avatar, el.speed]) {
   sel.addEventListener("change", () => { if (isActive()) stopRead(); });
 }
 

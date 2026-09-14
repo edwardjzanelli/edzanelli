@@ -40,10 +40,12 @@ function mockFetch(moderation) {
   return calls;
 }
 
-const read = (script) => handler({
+// The Read page sends no language: there is no selector for it. Extra fields can be passed here to
+// cover callers that do send one.
+const read = (script, extra = {}) => handler({
   requestContext: { http: { method: "POST" } },
   headers: { origin: "https://edzanelli.com" },
-  body: JSON.stringify({ mode: "read", avatar: "ed", language: "en", script }),
+  body: JSON.stringify({ mode: "read", avatar: "ed", script, ...extra }),
 });
 
 test("an allowed script is minted, and the script went out under the policy file", async () => {
@@ -74,8 +76,30 @@ test("an allowed script is minted, and the script went out under the policy file
   assert.equal(token.llm_configuration_id, undefined);
   // The voice still has to be there: it is what does the speaking.
   assert.ok(token.avatar_persona.voice_id);
-  assert.equal(token.avatar_persona.language, "en");
+  assert.equal(token.avatar_persona.language, "en", "read sends no language, so it defaults to en");
   assert.equal(token.avatar_persona.voice_settings.speed, 1);
+});
+
+test("read mode needs no language, and honours one if it is sent", async () => {
+  // The page has no language selector; the field only governs speech recognition, which read mode
+  // never uses, and the voice reads either language whatever this says.
+  const withNone = mockFetch({ text: completion({ allowed: true }) });
+  assert.equal((await read("Senza lingua.")).statusCode, 200);
+  assert.equal(withNone.token[0].avatar_persona.language, "en");
+
+  const withItalian = mockFetch({ text: completion({ allowed: true }) });
+  assert.equal((await read("Con lingua.", { language: "it" })).statusCode, 200);
+  assert.equal(withItalian.token[0].avatar_persona.language, "it");
+});
+
+test("a language that is sent is still checked, in read mode too", async () => {
+  const calls = mockFetch({ text: completion({ allowed: true }) });
+
+  const res = await read("Ordinary script.", { language: "klingon" });
+
+  assert.equal(res.statusCode, 400);
+  assert.equal(calls.moderation.length, 0, "a bad request must not cost a moderation call");
+  assert.equal(calls.token.length, 0);
 });
 
 test("policy item 2, the c-word: refused, and nothing is minted", async () => {

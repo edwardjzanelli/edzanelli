@@ -11,13 +11,18 @@ POST <FunctionUrl>
 { "mode": "ask" | "read", "avatar": "ed|judy|dexter", "language": "en|it", "llm": "openai|claude|gemini", "speed": 1.00, "script": "..." }
 ```
 
-`mode` defaults to `ask`. Every mode needs `avatar` and `language`; `speed` is optional everywhere
-(0.80 to 1.20 in steps of 0.05, defaulting to `voiceSpeed` in `config.json`, then 1).
+`mode` defaults to `ask`. Every mode needs `avatar`; `speed` is optional everywhere (0.80 to 1.20
+in steps of 0.05, defaulting to `voiceSpeed` in `config.json`, then 1).
 
-| mode | token | `llm` | `script` | used by |
-| --- | --- | --- | --- | --- |
-| `ask` | `FULL` with `context_id` and an LLM configuration, so the avatar converses | required | ignored | `ask.html` |
-| `read` | `FULL` with **no** `context_id` and **no** `llm_configuration_id` | ignored | required, 1500 characters at most | `read.html` |
+| mode | token | `language` | `llm` | `script` | used by |
+| --- | --- | --- | --- | --- | --- |
+| `ask` | `FULL` with `context_id` and an LLM configuration, so the avatar converses | required | required | ignored | `ask.html` |
+| `read` | `FULL` with **no** `context_id` and **no** `llm_configuration_id` | optional, defaults to `en` | ignored | required, 1500 characters at most | `read.html` |
+
+`language` sets speech recognition, so it only matters where the avatar listens. Read mode never
+listens, and the voice is multilingual: it reads an English or an Italian script correctly whatever
+this field says. The Read page therefore has no language selector and sends none. A `language` that
+*is* sent is still checked against the allow-list in both modes.
 
 `read` exists because the Read page never asks the avatar anything: it calls the SDK's `repeat()`,
 which speaks text verbatim. A `read` request with a missing, non-string, or over-length `script` is
