@@ -24,6 +24,7 @@ import {
   speakBoundMs,
   speakStartAction,
   splitScript,
+  textToSpeak,
 } from "./read-logic.js";
 
 // The per-chunk and whole-read waits are not constants: they are sized to the text and the cadence
@@ -57,6 +58,10 @@ const MAX = Number(el.script.getAttribute("maxlength"));
 // ---------- UI ----------
 
 function setStatus(text) { el.status.textContent = text; }
+
+// A refusal is the outcome of the read, not a stage of it, so it holds the status line rather than
+// being replaced by progress. Everything else falls back to the ordinary wording.
+const statusLine = (fallback) => (refused && refusalMessage ? refusalMessage : fallback);
 
 let state = { live: false, busy: false, speaking: false };
 
@@ -141,7 +146,7 @@ function armReadDeadline(boundMs) {
   readDeadline = setTimeout(() => {
     console.warn(`[read] read did not finish within ${Math.round(boundMs / 1000)} s of the last chunk; stopping`);
     cancelRead();
-    finish("Done");
+    finish(statusLine("Done"));
   }, boundMs);
 }
 
@@ -174,6 +179,8 @@ function resetReadState() {
   pendingStreamReady = null;
   streamReady = false;                            // the next session has its own stream
   speakingNow = false;
+  refused = false;
+  refusalMessage = "";
   stopRequested = false;
 }
 
@@ -276,12 +283,14 @@ async function readScript(text) {
   await new Promise((resolve) => setTimeout(resolve, TAIL_MS));
   if (run !== generation) return; // Stop landed during the tail; it has already ended the session
 
-  finish("Done");
+  finish(statusLine("Done"));
 }
 
 // ---------- session ----------
 
-let script = ""; // the script the live session was started for
+let script = "";          // the script the live session was started for
+let refused = false;      // the moderation policy turned this script down
+let refusalMessage = "";  // what the avatar says instead, in its own voice
 let speed = 1;   // the cadence it was started at, which is what the waits are sized against
 
 const avatar = createAvatarSession({
@@ -294,6 +303,15 @@ const avatar = createAvatarSession({
   // A start really is happening: take the script it was started for, and clear the state again in
   // case this start came from anywhere but the Go button.
   onStarting: (req) => { script = req.script; speed = req.speed; resetReadState(); },
+  // A refused script still gets a session, because the avatar is what delivers the refusal.
+  onToken: (answer) => {
+    refused = Boolean(answer.refused);
+    refusalMessage = refused ? String(answer.message ?? "") : "";
+    if (refused) {
+      log("script refused", `"${preview(refusalMessage)}"`);
+      setStatus(statusLine("Reading"));
+    }
+  },
   onSessionState: (state) => log("session.state_changed", String(state)),
   onStreamReady: () => {
     streamReady = true;
@@ -302,8 +320,10 @@ const avatar = createAvatarSession({
   },
   onConnected: () => {
     if (stopRequested) return; // Stop landed while connecting; the queued stop does the rest
-    setStatus("Reading");
-    readScript(script); // waits for the stream itself; CONNECTED alone is not enough to speak
+    setStatus(statusLine("Reading"));
+    // Waits for the stream itself; CONNECTED alone is not enough to speak. A refused script is
+    // never what goes out: the refusal takes its place, down this same path.
+    readScript(textToSpeak({ script, refused, message: refusalMessage }));
   },
   // The Lambda's refusals are written for the visitor, so they are shown word for word.
   onStartFailed: (err) => setStatus(err.fromServer ? err.message : "The avatar is unavailable right now. " + (err.message || "")),
@@ -311,7 +331,7 @@ const avatar = createAvatarSession({
   onSpeakStarted: () => {
     speakingNow = true;
     log("avatar.speak_started");
-    setStatus("Reading");
+    setStatus(statusLine("Reading"));
     if (pendingSpeakStart) pendingSpeakStart(true);
   },
   onSpeakEnded: () => {

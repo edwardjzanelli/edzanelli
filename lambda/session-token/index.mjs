@@ -16,9 +16,11 @@
 //   speed:  speaking speed 0.80 to 1.20 in steps of 0.05; defaults to config voiceSpeed, then 1.
 //   script: read mode only, required there. The text the avatar will read; 1500 characters at most.
 //
-// In read mode the script is checked against moderation-policy.txt by an OpenAI call before any
-// token is minted. The check is fail-closed: if it cannot be made, or comes back unreadable,
-// nothing is minted. A refused script never reaches LiveAvatar.
+// In read mode the script is checked against moderation-policy.txt by an OpenAI call before the
+// token is minted. A refused script still gets a session, answered 200 with refused: true and the
+// message the avatar then says in its own voice; the script itself is never sent to the avatar.
+// The check is still fail-closed: if it cannot be made, or comes back unreadable, there is no
+// verdict to speak, so nothing is minted and the page shows the text itself.
 //
 // Environment:
 //   LIVEAVATAR_API_KEY   required. The only secret this function holds.
@@ -158,14 +160,19 @@ export const handler = async (event) => {
     : avatar.avatar_id && voiceId && CONFIG.context_id && llm.llm_configuration_id;
   if (!configured) return json(503, { error: "this combination is not configured yet" });
 
-  // Nothing is minted for a read until the script has passed the policy. The page shows these two
-  // messages to the visitor word for word, so they are written for a visitor to read.
+  /* A refused script still gets a session, because the avatar is the one that delivers the refusal:
+     it says the message below in its own voice rather than the page printing a line. What it never
+     does is read the script itself, which the page enforces by speaking the message in its place.
+
+     Only the fail-closed path mints nothing: if the policy could not be applied at all, there is no
+     verdict to speak and the page shows the text instead. */
+  let refusal = null;
   if (mode === "read") {
     const verdict = await moderate(req.script);
     if (verdict.failed) return json(502, { error: MODERATION_UNAVAILABLE });
     if (!verdict.allowed) {
       console.log(`refused a script: ${verdict.reason}`);
-      return json(403, { error: `I'm sorry, but I'm unable to say that because it is ${verdict.reason}.` });
+      refusal = `I'm sorry, but I'm unable to say that because it is ${verdict.reason}.`;
     }
   }
 
@@ -223,6 +230,12 @@ export const handler = async (event) => {
     return json(502, { error: "unexpected response from avatar service" });
   }
 
-  console.log(`minted session ${payload.session_id} mode=${mode} token=${body.mode}${mode === "read" ? " (no context)" : ""} avatar=${req.avatar} lang=${languageKey} llm=${mode === "read" ? "-" : req.llm} sandbox=${body.is_sandbox}`);
-  return json(200, { session_id: payload.session_id, session_token: payload.session_token });
+  console.log(`minted session ${payload.session_id} mode=${mode} token=${body.mode}${mode === "read" ? " (no context)" : ""} avatar=${req.avatar} lang=${languageKey} llm=${mode === "read" ? "-" : req.llm} sandbox=${body.is_sandbox}${refusal ? " refused" : ""}`);
+
+  const answer = { session_id: payload.session_id, session_token: payload.session_token };
+  if (mode === "read") {
+    answer.refused = refusal !== null;
+    if (refusal) answer.message = refusal;
+  }
+  return json(200, answer);
 };

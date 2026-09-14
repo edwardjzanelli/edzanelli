@@ -50,7 +50,18 @@ prepaid HeyGen balance. LITE would have been cheaper, but it cannot speak. A rea
 stopped by the page as soon as the last line is spoken, and `maxSessionDurationSeconds` (180) caps
 a session that is not, so the worst case is 6 credits per read.
 
-Both modes answer `{ "session_id": "...", "session_token": "..." }`.
+Both modes answer `{ "session_id": "...", "session_token": "..." }`. Read mode adds `refused`, and
+a `message` when that is true:
+
+```
+{ "session_id": "...", "session_token": "...", "refused": false }
+{ "session_id": "...", "session_token": "...", "refused": true,
+  "message": "I'm sorry, but I'm unable to say that because it is <reason>." }
+```
+
+A refused script still gets a session: the avatar delivers the refusal in its own voice, which is
+why a token is minted for it. The page speaks `message` in place of the script, so the refused text
+itself never reaches the avatar.
 
 ## One-time setup in the LiveAvatar dashboard
 1. Context: create `Ask Ed` from `prompts/ask-ed.txt`. Copy its ID into `config.json` as `context_id`. One context serves both languages; the prompt tells the avatar to answer in the visitor's language.
@@ -97,13 +108,20 @@ JSON-object response) with `moderation-policy.txt` as the system message and the
 message. The answer is `{"allowed": true}` or `{"allowed": false, "reason": "<phrase>"}`, and the
 reason completes the sentence the visitor sees.
 
-- Refused: `403 {"error": "I'm sorry, but I'm unable to say that because it is <reason>."}`
+- Refused: `200` with a token, `refused: true`, and `message` set to
+  `"I'm sorry, but I'm unable to say that because it is <reason>."` The avatar says that message
+  instead of the script, so the refusal is delivered in the same voice as everything else on the
+  page. The refused script is never sent to the avatar.
 - Cannot be checked (call failed, timed out after 10 s, or the answer was not usable):
   `502 {"error": "I can't check that script right now. Please try again in a moment."}`
 
-Either way no token is minted. **The check fails closed**: if the moderation call cannot be
-completed, nothing is read. Deleting `OPENAI_API_KEY` therefore turns the Read page off while
-leaving Ask working, which is the quickest way to pause just that page.
+A refusal mints; a failure does not. **The check still fails closed**: a verdict that could not be
+reached is not a verdict to speak, so nothing is minted and the visitor's script is not read.
+Deleting `OPENAI_API_KEY` therefore turns the Read page off while leaving Ask working, which is
+the quickest way to pause just that page.
+
+In neither case does the refused script reach the avatar. What a refusal buys is a session that
+says why, which is what the Read page's "what it won't read" note promises.
 
 `OPENAI_API_KEY` is set in the Lambda console (or with `update-function-configuration`) and is
 never committed. Edit the policy in `moderation-policy.txt` and redeploy; it is read at cold start,

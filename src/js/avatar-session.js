@@ -15,9 +15,10 @@ import {
 
 export const TOKEN_URL = "https://bw7rxcyn7l47nrc2f3ors4bwzi0mqzhp.lambda-url.us-west-1.on.aws"; // Lambda function URL, see lambda/session-token/README.md
 
-// POSTs the page's request body to the token Lambda. An error carrying a message the Lambda wrote
-// is marked fromServer, so a controller can show that text to the visitor verbatim (the Read page
-// does this for a refused script) rather than a generic line.
+/* POSTs the page's request body to the token Lambda and returns the whole answer, not just the
+   token: read mode also reports whether the script was refused and what the avatar should say
+   instead. An error carrying a message the Lambda wrote is marked fromServer, so a controller can
+   show that text to the visitor verbatim rather than a generic line. */
 export async function fetchToken(request, tokenUrl = TOKEN_URL) {
   if (!tokenUrl) throw new Error("token endpoint not configured");
   const res = await fetch(tokenUrl, {
@@ -32,7 +33,7 @@ export async function fetchToken(request, tokenUrl = TOKEN_URL) {
     err.status = res.status;
     throw err;
   }
-  return data.session_token;
+  return data;
 }
 
 /* Creates the session controller for one page.
@@ -47,6 +48,8 @@ export async function fetchToken(request, tokenUrl = TOKEN_URL) {
      onState({ live, busy, speaking })   every time any of the three changes
      onStatus(text)                      generic lifecycle lines: connecting, ending, disconnected
      onStarting(request)                 after "Connecting", with the request being used
+     onToken(answer)                     the Lambda's whole answer, before the session is built.
+                                         Read mode uses it to see a refused script.
      onConnected()                       state reached CONNECTED. Not the same as ready to speak:
                                          the SDK sets it at the end of its start(), which can land
                                          before the avatar's tracks exist. Use onStreamReady for that.
@@ -66,6 +69,7 @@ export function createAvatarSession(options) {
     onState = () => {},
     onStatus = () => {},
     onStarting = () => {},
+    onToken = () => {},
     onConnected = () => {},
     onStreamReady = () => {},
     onSessionState = () => {},
@@ -161,8 +165,9 @@ export function createAvatarSession(options) {
     onStarting(req);
 
     try {
-      const token = await fetchToken(req, tokenUrl);
-      const s = new LiveAvatarSession(token, sessionConfig);
+      const answer = await fetchToken(req, tokenUrl);
+      onToken(answer);
+      const s = new LiveAvatarSession(answer.session_token, sessionConfig);
       wire(s);
       session = s;
       startPromise = s.start();

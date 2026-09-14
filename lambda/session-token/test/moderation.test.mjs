@@ -2,9 +2,11 @@
 
    fetch is mocked, so these do not exercise the model's judgement: the verdict each test feeds in
    is the one moderation-policy.txt calls for on that script. What is under test is the Lambda's
-   half of the contract, which is the part that has to be right every time: a refusal never mints a
-   token, an unreachable or unreadable moderation answer never mints a token, and the script really
-   is sent to OpenAI under the policy file that lives in this directory. */
+   half of the contract, which is the part that has to be right every time: a refusal answers 200
+   with a session and the message the avatar then says, because the avatar is what delivers the
+   refusal; an unreachable or unreadable moderation answer is a 502 that mints nothing, because
+   there is no verdict to speak; and the script really is sent to OpenAI under the policy file that
+   lives in this directory. */
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -55,7 +57,10 @@ test("an allowed script is minted, and the script went out under the policy file
   const res = await read(script);
 
   assert.equal(res.statusCode, 200);
-  assert.equal(JSON.parse(res.body).session_token, "t1");
+  const answer = JSON.parse(res.body);
+  assert.equal(answer.session_token, "t1");
+  assert.equal(answer.refused, false, "read mode always reports the verdict");
+  assert.equal(answer.message, undefined, "nothing to say instead of an allowed script");
 
   assert.equal(calls.moderation.length, 1);
   const sent = calls.moderation[0];
@@ -102,14 +107,19 @@ test("a language that is sent is still checked, in read mode too", async () => {
   assert.equal(calls.token.length, 0);
 });
 
-test("policy item 2, the c-word: refused, and nothing is minted", async () => {
+test("policy item 2, the c-word: refused, and the avatar is given a session to say so", async () => {
   const calls = mockFetch({ text: completion({ allowed: false, reason: "overly profane" }) });
 
   const res = await read("A script using the four-letter c-word once.");
 
-  assert.equal(res.statusCode, 403);
-  assert.equal(JSON.parse(res.body).error, "I'm sorry, but I'm unable to say that because it is overly profane.");
-  assert.equal(calls.token.length, 0);
+  assert.equal(res.statusCode, 200, "a refusal still gets a session: the avatar delivers it");
+  const answer = JSON.parse(res.body);
+  assert.equal(answer.refused, true);
+  assert.equal(answer.message, "I'm sorry, but I'm unable to say that because it is overly profane.");
+  assert.ok(answer.session_token, "the avatar needs a session to say it in");
+  assert.equal(calls.token.length, 1);
+  // The refused text itself is never what the page will speak; read-logic swaps in the message.
+  assert.equal(answer.error, undefined);
 });
 
 test("policy item 3: three profanities are refused", async () => {
@@ -117,9 +127,14 @@ test("policy item 3: three profanities are refused", async () => {
 
   const res = await read("This shit is broken, that shit is worse, and the whole shit show is late.");
 
-  assert.equal(res.statusCode, 403);
-  assert.equal(JSON.parse(res.body).error, "I'm sorry, but I'm unable to say that because it is overly profane.");
-  assert.equal(calls.token.length, 0);
+  assert.equal(res.statusCode, 200, "a refusal still gets a session: the avatar delivers it");
+  const answer = JSON.parse(res.body);
+  assert.equal(answer.refused, true);
+  assert.equal(answer.message, "I'm sorry, but I'm unable to say that because it is overly profane.");
+  assert.ok(answer.session_token, "the avatar needs a session to say it in");
+  assert.equal(calls.token.length, 1);
+  // The refused text itself is never what the page will speak; read-logic swaps in the message.
+  assert.equal(answer.error, undefined);
 });
 
 test("policy item 3: two profanities are allowed", async () => {
@@ -136,9 +151,14 @@ test("policy item 8: putting a commitment in Ed's mouth is refused", async () =>
 
   const res = await read("I will build your platform for twenty thousand dollars and I endorse Acme Corp.");
 
-  assert.equal(res.statusCode, 403);
-  assert.equal(JSON.parse(res.body).error, "I'm sorry, but I'm unable to say that because it is something Ed has not said.");
-  assert.equal(calls.token.length, 0);
+  assert.equal(res.statusCode, 200, "a refusal still gets a session: the avatar delivers it");
+  const answer = JSON.parse(res.body);
+  assert.equal(answer.refused, true);
+  assert.equal(answer.message, "I'm sorry, but I'm unable to say that because it is something Ed has not said.");
+  assert.ok(answer.session_token, "the avatar needs a session to say it in");
+  assert.equal(calls.token.length, 1);
+  // The refused text itself is never what the page will speak; read-logic swaps in the message.
+  assert.equal(answer.error, undefined);
 });
 
 test("moderation 500: fails closed", async () => {

@@ -20,6 +20,17 @@ export const SPEAK_BOUND_FLOOR_MS = 20000;
 export const READ_BOUND_FACTOR = 2;
 export const READ_BOUND_PAD_MS = 15000;
 
+/* What the avatar actually says.
+
+   A refused script is never spoken. The refusal is spoken in its place, in the same voice and down
+   the same path as any other read, because a refusal delivered by the avatar is the point: the
+   page's own note promises that the avatar tells you why. If a refusal somehow arrives with no
+   message to say, the answer is silence, never the script that was just refused. */
+export function textToSpeak({ script, refused, message }) {
+  if (!refused) return script;
+  return typeof message === "string" && message.trim() ? message.trim() : "";
+}
+
 // How long this many characters should take to say at this cadence.
 export function estimateMs(chars, speed) {
   return (chars / CHARS_PER_SEC) * 1000 / speed;

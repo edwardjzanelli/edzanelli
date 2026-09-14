@@ -13,6 +13,7 @@ import {
   speakBoundMs,
   speakStartAction,
   splitScript,
+  textToSpeak,
   CHARS_PER_SEC,
   CHUNK_LIMIT,
   MAX_SPEAK_SENDS,
@@ -230,6 +231,43 @@ test("nothing is spoken straight from onConnected any more", () => {
   const onConnected = READ_JS.match(/onConnected: \(\) => \{[\s\S]*?\n  \},/);
   assert.ok(onConnected, "onConnected must exist");
   assert.doesNotMatch(onConnected[0], /avatar\.repeat\(/, "the send must go through the readiness gate");
+});
+
+test("an allowed script is what gets spoken", () => {
+  assert.equal(textToSpeak({ script: "Read this.", refused: false, message: undefined }), "Read this.");
+});
+
+test("a refused script is replaced by the refusal, never spoken", () => {
+  const refusal = "I'm sorry, but I'm unable to say that because it is overly profane.";
+  const spoken = textToSpeak({ script: "something the policy turned down", refused: true, message: refusal });
+
+  assert.equal(spoken, refusal);
+  assert.ok(!spoken.includes("turned down"), "the refused script must not reach the avatar");
+});
+
+test("a refusal with no message to say is silence, not the refused script", () => {
+  // The Lambda always sends a message with a refusal, but if one ever arrived without, the one
+  // thing that must not happen is the avatar reading the script that was just refused.
+  for (const message of [undefined, null, "", "   ", 42]) {
+    assert.equal(
+      textToSpeak({ script: "the refused script", refused: true, message }),
+      "",
+      `message ${JSON.stringify(message)} must give silence`,
+    );
+  }
+});
+
+test("the refusal goes through the ordinary chunker, and fits in one chunk", () => {
+  const refusal = "I'm sorry, but I'm unable to say that because it is an attack on a named person.";
+  const chunks = splitScript(textToSpeak({ script: "x".repeat(1200), refused: true, message: refusal }));
+
+  assert.deepEqual(chunks, [refusal], "one chunk, unchanged, down the same path as any read");
+  assert.ok(refusal.length <= CHUNK_LIMIT);
+});
+
+test("the refusal is bounded like any other speech", () => {
+  const refusal = "I'm sorry, but I'm unable to say that because it is overly profane.";
+  assert.ok(speakBoundMs(refusal.length, 1.0) > estimateMs(refusal.length, 1.0));
 });
 
 test("the estimate is characters over the rate, divided by cadence", () => {
