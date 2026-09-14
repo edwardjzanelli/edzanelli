@@ -47,7 +47,11 @@ export async function fetchToken(request, tokenUrl = TOKEN_URL) {
      onState({ live, busy, speaking })   every time any of the three changes
      onStatus(text)                      generic lifecycle lines: connecting, ending, disconnected
      onStarting(request)                 after "Connecting", with the request being used
-     onConnected()                       the session is live
+     onConnected()                       state reached CONNECTED. Not the same as ready to speak:
+                                         the SDK sets it at the end of its start(), which can land
+                                         before the avatar's tracks exist. Use onStreamReady for that.
+     onStreamReady()                     both the audio and the video track have arrived
+     onSessionState(state)               every SESSION_STATE_CHANGED, for logging
      onStartFailed(err)                  the start did not happen; the controller writes the status
      onDisconnected(reason, message)     the session dropped on its own
      onUserSpeakStarted() / onUserSpeakEnded()
@@ -63,6 +67,8 @@ export function createAvatarSession(options) {
     onStatus = () => {},
     onStarting = () => {},
     onConnected = () => {},
+    onStreamReady = () => {},
+    onSessionState = () => {},
     onStartFailed = () => {},
     onDisconnected = () => {},
     onUserSpeakStarted = () => {},
@@ -105,9 +111,11 @@ export function createAvatarSession(options) {
   function wire(s) {
     s.on(SessionEvent.SESSION_STREAM_READY, () => {
       s.attach(video);
+      onStreamReady();
     });
 
     s.on(SessionEvent.SESSION_STATE_CHANGED, (state) => {
+      onSessionState(state);
       if (state === SessionState.CONNECTED) {
         busy = false;
         emit(true);

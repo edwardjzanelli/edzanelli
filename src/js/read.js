@@ -8,16 +8,29 @@
    Nothing here escapes or rewrites the script; repeat() takes plain text. The session is stopped as
    soon as the last line is spoken, because an open session bills at 2 credits a minute either way.
    No wait in here is unbounded: a chunk waits at most SPEAK_TIMEOUT_MS for its speak_ended, and the
-   read as a whole is abandoned READ_TIMEOUT_MS after the last chunk went out. */
+   read as a whole is abandoned READ_TIMEOUT_MS after the last chunk went out.
+
+   Nothing is sent at SessionState.CONNECTED. The SDK sets that at the end of its own start(), which
+   can land before the avatar's tracks are subscribed, and a speak_text sent that early is a race
+   the server can lose silently. The first line waits for SESSION_STREAM_READY instead. */
 
 import { createAvatarSession } from "./avatar-session.js";
-import { buttonState, splitScript } from "./read-logic.js";
+import { buttonState, readyToSpeak, speakStartAction, splitScript } from "./read-logic.js";
 
 const SPEAK_TIMEOUT_MS = 20000; // longest wait for one chunk's avatar.speak_ended before moving on
 const READ_TIMEOUT_MS = 30000;  // longest the whole read may hang after the last chunk was sent
 // avatar.speak_ended tracks buffer processing, not playout, and leads the audio by about half a
 // second (SeniorMinder spike 18445c98), so the last words are still playing when it arrives.
 const TAIL_MS = 2000;
+const STREAM_READY_MS = 10000;  // longest wait for SESSION_STREAM_READY before speaking regardless
+const READY_SETTLE_MS = 500;    // after the stream is ready, before the first line goes out
+const SPEAK_START_MS = 4000;    // longest wait for a chunk's avatar.speak_started before resending
+
+// Field logging. The SDK's own console output is noise at this level, so every line the page cares
+// about is stamped and prefixed, and no script text goes out beyond a short preview.
+const log = (event, detail = "") =>
+  console.log(`[read] +${Math.round(performance.now())}ms ${event}${detail ? " " + detail : ""}`);
+const preview = (text) => text.slice(0, 40).replace(/\s+/g, " ");
 
 const el = {
   avatar: document.getElementById("avatar"),
@@ -61,10 +74,15 @@ function selection() {
 
 // ---------- reading ----------
 
-let pendingSpeakEnd = null; // settles the wait for the current chunk's avatar.speak_ended
-let readDeadline = null;    // the whole-read bound, re-armed as each chunk goes out
-let generation = 0;         // bumped to abandon a read in progress
-let stopRequested = false;  // Stop was pressed before the session finished connecting
+let pendingSpeakEnd = null;   // settles the wait for the current chunk's avatar.speak_ended
+let pendingSpeakStart = null; // settles the wait for the current chunk's avatar.speak_started
+let pendingStreamReady = null;// settles the wait for SESSION_STREAM_READY
+let streamReady = false;      // SESSION_STREAM_READY has fired for the live session
+let readDeadline = null;      // the whole-read bound, re-armed as each chunk goes out
+let generation = 0;           // bumped to abandon a read in progress
+let stopRequested = false;    // Stop was pressed before the session finished connecting
+
+const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function waitForSpeakEnd() {
   return new Promise((resolve) => {
@@ -75,6 +93,34 @@ function waitForSpeakEnd() {
     };
     const timer = setTimeout(() => settle("timeout"), SPEAK_TIMEOUT_MS);
     pendingSpeakEnd = settle;
+  });
+}
+
+// The receipt that a chunk reached text-to-speech. Registered in the same tick as the send, so the
+// event cannot arrive before anything is listening for it.
+function waitForSpeakStart() {
+  return new Promise((resolve) => {
+    const settle = (started) => {
+      clearTimeout(timer);
+      if (pendingSpeakStart === settle) pendingSpeakStart = null;
+      resolve(started);
+    };
+    const timer = setTimeout(() => settle(false), SPEAK_START_MS);
+    pendingSpeakStart = settle;
+  });
+}
+
+// Resolves true if the wait expired rather than the stream arriving.
+function waitForStreamReady() {
+  if (streamReady) return Promise.resolve(false);
+  return new Promise((resolve) => {
+    const settle = (expired) => {
+      clearTimeout(timer);
+      if (pendingStreamReady === settle) pendingStreamReady = null;
+      resolve(expired);
+    };
+    const timer = setTimeout(() => settle(true), STREAM_READY_MS);
+    pendingStreamReady = settle;
   });
 }
 
@@ -94,6 +140,8 @@ function cancelRead() {
   clearTimeout(readDeadline);
   readDeadline = null;
   if (pendingSpeakEnd) pendingSpeakEnd("cancelled");
+  if (pendingSpeakStart) pendingSpeakStart(false);
+  if (pendingStreamReady) pendingStreamReady(true);
 }
 
 /* Every piece of per-read state, cleared at the start of a read rather than only when one ends.
@@ -108,7 +156,12 @@ function resetReadState() {
   clearTimeout(readDeadline);
   readDeadline = null;
   if (pendingSpeakEnd) pendingSpeakEnd("cancelled");
+  if (pendingSpeakStart) pendingSpeakStart(false);
+  if (pendingStreamReady) pendingStreamReady(true);
   pendingSpeakEnd = null;
+  pendingSpeakStart = null;
+  pendingStreamReady = null;
+  streamReady = false;                            // the next session has its own stream
   stopRequested = false;
 }
 
@@ -131,16 +184,57 @@ function stopRead() {
   finish("Stopped");
 }
 
+/* Sends one chunk and waits for its avatar.speak_started, which is the receipt that the text
+   actually went into text-to-speech. Watching only speak_ended cannot tell a chunk that was never
+   taken up from one that is still being spoken. If the receipt does not arrive the chunk goes out
+   once more; if it still does not, the caller falls through to the speak_ended bound as before. */
+async function sendChunk(chunk, run) {
+  for (let sends = 1; ; sends++) {
+    if (run !== generation || !avatar.isLive()) return "cancelled";
+    if (!avatar.repeat(chunk)) return "failed";
+    log("sent", `${sends > 1 ? `(send ${sends}) ` : ""}${preview(chunk)}`);
+    armReadDeadline();
+
+    if (await waitForSpeakStart()) return "started";
+    if (run !== generation) return "cancelled";
+
+    const next = speakStartAction(sends);
+    if (next.action === "resend") {
+      console.warn(`[read] no avatar.speak_started within ${SPEAK_START_MS / 1000} s; resending: ${preview(chunk)}`);
+      continue;
+    }
+    console.warn(`[read] ${next.warn}: nothing after a resend; waiting out the speak_ended bound`);
+    return "unconfirmed";
+  }
+}
+
 async function readScript(text) {
   const run = ++generation;
+
+  // Readiness, not CONNECTED. Wait for the stream, bounded; if the bound expires, speak anyway
+  // rather than leave the page silent, and say so in the log.
+  const expired = await waitForStreamReady();
+  if (run !== generation) return;
+  const gate = readyToSpeak({ connected: avatar.isLive(), streamReady, streamWaitExpired: expired });
+  if (!gate.ready) { log("not ready, nothing sent"); return; }
+  if (gate.warn) {
+    console.warn(`[read] ${gate.warn}: no session.stream_ready within ${STREAM_READY_MS / 1000} s; speaking anyway`);
+  }
+
+  await pause(READY_SETTLE_MS);
+  if (run !== generation || !avatar.isLive()) return;
+
   for (const chunk of splitScript(text)) {
     if (run !== generation || !avatar.isLive()) { clearTimeout(readDeadline); return; }
-    if (!avatar.repeat(chunk)) { cancelRead(); finish("Stopped"); return; }
-    armReadDeadline();
+
+    const sent = await sendChunk(chunk, run);
+    if (sent === "cancelled") return;
+    if (sent === "failed") { cancelRead(); finish("Stopped"); return; }
+
     const how = await waitForSpeakEnd();
     if (how === "cancelled") return; // cancelRead already cleared the deadline
     if (how === "timeout") {
-      console.warn(`no avatar.speak_ended within ${SPEAK_TIMEOUT_MS / 1000} s; moving on:`, chunk.slice(0, 80));
+      console.warn(`[read] no avatar.speak_ended within ${SPEAK_TIMEOUT_MS / 1000} s; moving on: ${preview(chunk)}`);
     }
   }
   clearTimeout(readDeadline);
@@ -170,16 +264,29 @@ const avatar = createAvatarSession({
   // A start really is happening: take the script it was started for, and clear the state again in
   // case this start came from anywhere but the Go button.
   onStarting: (req) => { script = req.script; resetReadState(); },
+  onSessionState: (state) => log("session.state_changed", String(state)),
+  onStreamReady: () => {
+    streamReady = true;
+    log("session.stream_ready");
+    if (pendingStreamReady) pendingStreamReady(false);
+  },
   onConnected: () => {
     if (stopRequested) return; // Stop landed while connecting; the queued stop does the rest
     setStatus("Reading");
-    readScript(script);
+    readScript(script); // waits for the stream itself; CONNECTED alone is not enough to speak
   },
   // The Lambda's refusals are written for the visitor, so they are shown word for word.
   onStartFailed: (err) => setStatus(err.fromServer ? err.message : "The avatar is unavailable right now. " + (err.message || "")),
   onDisconnected: cancelRead,
-  onSpeakStarted: () => setStatus("Reading"),
-  onSpeakEnded: () => { if (pendingSpeakEnd) pendingSpeakEnd("ended"); },
+  onSpeakStarted: () => {
+    log("avatar.speak_started");
+    setStatus("Reading");
+    if (pendingSpeakStart) pendingSpeakStart(true);
+  },
+  onSpeakEnded: () => {
+    log("avatar.speak_ended");
+    if (pendingSpeakEnd) pendingSpeakEnd("ended");
+  },
 });
 
 // ---------- wiring ----------

@@ -17,6 +17,31 @@ export function buttonState({ live, busy, hasText }) {
   return { label: "Go", disabled: !hasText };
 }
 
+/* When the first line may be sent.
+
+   SessionState.CONNECTED is not readiness: the SDK sets it at the end of its start(), which can
+   land before the avatar's tracks are subscribed, and a speak_text sent that early is a race the
+   server may simply drop. SESSION_STREAM_READY is the SDK's only readiness signal and fires once
+   both the audio and the video track have arrived, so that is what this waits for. The wait is
+   bounded: if it expires, speak anyway and say so, because a silent page is worse than a gamble. */
+export function readyToSpeak({ connected, streamReady, streamWaitExpired }) {
+  if (!connected) return { ready: false };
+  if (streamReady) return { ready: true };
+  if (streamWaitExpired) return { ready: true, warn: "stream-not-ready" };
+  return { ready: false };
+}
+
+// How many times one chunk may be sent: the original and a single resend.
+export const MAX_SPEAK_SENDS = 2;
+
+/* What to do when a chunk has been sent and its avatar.speak_started has not arrived in time.
+   speak_started is the receipt that the text actually reached text-to-speech; without it the
+   chunk may never have been taken up at all. `sends` counts how many times it has gone out. */
+export function speakStartAction(sends) {
+  if (sends < MAX_SPEAK_SENDS) return { action: "resend" };
+  return { action: "proceed", warn: "no-speak-started" };
+}
+
 // Break one over-long sentence on a space rather than mid-word.
 function hardSplit(sentence, limit) {
   const out = [];

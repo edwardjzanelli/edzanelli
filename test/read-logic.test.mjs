@@ -5,7 +5,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-import { buttonState, splitScript, CHUNK_LIMIT } from "../src/js/read-logic.js";
+import {
+  buttonState,
+  readyToSpeak,
+  speakStartAction,
+  splitScript,
+  CHUNK_LIMIT,
+  MAX_SPEAK_SENDS,
+} from "../src/js/read-logic.js";
 
 const READ_JS = readFileSync(new URL("../src/js/read.js", import.meta.url), "utf8");
 
@@ -130,6 +137,71 @@ test("stopRequested is no longer cleared only on the way in to onStarting", () =
 
   // onStarting must no longer be the only place it is cleared.
   assert.doesNotMatch(READ_JS, /onStarting:[^\n]*stopRequested = false/);
+});
+
+test("CONNECTED alone is not ready to speak", () => {
+  // The defect this pins: repeat() was sent at SessionState.CONNECTED, which the SDK sets at the
+  // end of its start(), before the avatar's tracks exist. The server dropped it.
+  assert.deepEqual(readyToSpeak({ connected: true, streamReady: false, streamWaitExpired: false }), { ready: false });
+});
+
+test("connected and stream ready: speak, no warning", () => {
+  assert.deepEqual(readyToSpeak({ connected: true, streamReady: true, streamWaitExpired: false }), { ready: true });
+});
+
+test("the stream wait expiring speaks anyway, with a warning", () => {
+  // A silent page is worse than a gamble, but it must say which it did.
+  assert.deepEqual(
+    readyToSpeak({ connected: true, streamReady: false, streamWaitExpired: true }),
+    { ready: true, warn: "stream-not-ready" },
+  );
+});
+
+test("never ready while disconnected, whatever the stream says", () => {
+  for (const streamReady of [true, false]) {
+    for (const streamWaitExpired of [true, false]) {
+      assert.deepEqual(
+        readyToSpeak({ connected: false, streamReady, streamWaitExpired }),
+        { ready: false },
+        `disconnected must never be ready (streamReady=${streamReady}, expired=${streamWaitExpired})`,
+      );
+    }
+  }
+});
+
+test("a chunk with no speak_started is resent exactly once, then given up on", () => {
+  assert.deepEqual(speakStartAction(1), { action: "resend" });
+  assert.deepEqual(speakStartAction(2), { action: "proceed", warn: "no-speak-started" });
+  assert.equal(MAX_SPEAK_SENDS, 2, "one original send and one resend");
+});
+
+test("the retry never loops: every send count past the limit proceeds", () => {
+  for (let sends = MAX_SPEAK_SENDS; sends <= MAX_SPEAK_SENDS + 3; sends++) {
+    assert.equal(speakStartAction(sends).action, "proceed", `sends=${sends} must not resend again`);
+  }
+});
+
+test("the readiness and receipt bounds are declared", () => {
+  assert.match(READ_JS, /const STREAM_READY_MS = 10000;/);
+  assert.match(READ_JS, /const READY_SETTLE_MS = 500;/);
+  assert.match(READ_JS, /const SPEAK_START_MS = 4000;/);
+});
+
+test("there is exactly one place a chunk is sent", () => {
+  // The retry lives in sendChunk; a second call site would mean a send that skips the receipt.
+  const sends = READ_JS.match(/avatar\.repeat\(/g) ?? [];
+  assert.equal(sends.length, 1, "avatar.repeat should only be called from sendChunk");
+
+  const sendChunk = READ_JS.match(/async function sendChunk\([\s\S]*?\n\}/);
+  assert.ok(sendChunk, "sendChunk must exist");
+  assert.match(sendChunk[0], /avatar\.repeat\(/, "the one send site is inside sendChunk");
+  assert.match(sendChunk[0], /waitForSpeakStart\(\)/, "and it waits for the receipt");
+});
+
+test("nothing is spoken straight from onConnected any more", () => {
+  const onConnected = READ_JS.match(/onConnected: \(\) => \{[\s\S]*?\n  \},/);
+  assert.ok(onConnected, "onConnected must exist");
+  assert.doesNotMatch(onConnected[0], /avatar\.repeat\(/, "the send must go through the readiness gate");
 });
 
 test("a script within the limit is one piece, untouched", () => {
