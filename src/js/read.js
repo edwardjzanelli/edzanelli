@@ -7,18 +7,27 @@
 
    Nothing here escapes or rewrites the script; repeat() takes plain text. The session is stopped as
    soon as the last line is spoken, because an open session bills at 2 credits a minute either way.
-   No wait in here is unbounded: a chunk waits at most SPEAK_TIMEOUT_MS for its speak_ended, and the
-   read as a whole is abandoned READ_TIMEOUT_MS after the last chunk went out.
+   No wait in here is unbounded, and none is a fixed number either. Both the per-chunk wait and the
+   whole-read hang guard are sized from the text and the cadence, because a bound shorter than the
+   speech it covers expires mid-sentence and the next line then talks over the one still playing.
 
    Nothing is sent at SessionState.CONNECTED. The SDK sets that at the end of its own start(), which
    can land before the avatar's tracks are subscribed, and a speak_text sent that early is a race
    the server can lose silently. The first line waits for SESSION_STREAM_READY instead. */
 
 import { createAvatarSession } from "./avatar-session.js";
-import { buttonState, readyToSpeak, speakStartAction, splitScript } from "./read-logic.js";
+import {
+  buttonState,
+  estimateMs,
+  readBoundMs,
+  readyToSpeak,
+  speakBoundMs,
+  speakStartAction,
+  splitScript,
+} from "./read-logic.js";
 
-const SPEAK_TIMEOUT_MS = 20000; // longest wait for one chunk's avatar.speak_ended before moving on
-const READ_TIMEOUT_MS = 30000;  // longest the whole read may hang after the last chunk was sent
+// The per-chunk and whole-read waits are not constants: they are sized to the text and the cadence
+// by read-logic, because no bound may be shorter than the speech it is bounding.
 // avatar.speak_ended tracks buffer processing, not playout, and leads the audio by about half a
 // second (SeniorMinder spike 18445c98), so the last words are still playing when it arrives.
 const TAIL_MS = 2000;
@@ -78,20 +87,21 @@ let pendingSpeakEnd = null;   // settles the wait for the current chunk's avatar
 let pendingSpeakStart = null; // settles the wait for the current chunk's avatar.speak_started
 let pendingStreamReady = null;// settles the wait for SESSION_STREAM_READY
 let streamReady = false;      // SESSION_STREAM_READY has fired for the live session
+let speakingNow = false;      // between avatar.speak_started and avatar.speak_ended
 let readDeadline = null;      // the whole-read bound, re-armed as each chunk goes out
 let generation = 0;           // bumped to abandon a read in progress
 let stopRequested = false;    // Stop was pressed before the session finished connecting
 
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-function waitForSpeakEnd() {
+function waitForSpeakEnd(boundMs) {
   return new Promise((resolve) => {
     const settle = (how) => {
       clearTimeout(timer);
       if (pendingSpeakEnd === settle) pendingSpeakEnd = null;
       resolve(how);
     };
-    const timer = setTimeout(() => settle("timeout"), SPEAK_TIMEOUT_MS);
+    const timer = setTimeout(() => settle("timeout"), boundMs);
     pendingSpeakEnd = settle;
   });
 }
@@ -126,13 +136,13 @@ function waitForStreamReady() {
 
 // Even with every chunk bounded, the loop itself must not be able to sit there: if the read has not
 // finished this long after the last chunk went out, it is over regardless of what the SDK is doing.
-function armReadDeadline() {
+function armReadDeadline(boundMs) {
   clearTimeout(readDeadline);
   readDeadline = setTimeout(() => {
-    console.warn(`read did not finish within ${READ_TIMEOUT_MS / 1000} s of the last chunk; stopping`);
+    console.warn(`[read] read did not finish within ${Math.round(boundMs / 1000)} s of the last chunk; stopping`);
     cancelRead();
     finish("Done");
-  }, READ_TIMEOUT_MS);
+  }, boundMs);
 }
 
 function cancelRead() {
@@ -142,6 +152,7 @@ function cancelRead() {
   if (pendingSpeakEnd) pendingSpeakEnd("cancelled");
   if (pendingSpeakStart) pendingSpeakStart(false);
   if (pendingStreamReady) pendingStreamReady(true);
+  speakingNow = false;
 }
 
 /* Every piece of per-read state, cleared at the start of a read rather than only when one ends.
@@ -162,6 +173,7 @@ function resetReadState() {
   pendingSpeakStart = null;
   pendingStreamReady = null;
   streamReady = false;                            // the next session has its own stream
+  speakingNow = false;
   stopRequested = false;
 }
 
@@ -188,19 +200,24 @@ function stopRead() {
    actually went into text-to-speech. Watching only speak_ended cannot tell a chunk that was never
    taken up from one that is still being spoken. If the receipt does not arrive the chunk goes out
    once more; if it still does not, the caller falls through to the speak_ended bound as before. */
-async function sendChunk(chunk, run) {
+async function sendChunk(chunk, run, bounds) {
   for (let sends = 1; ; sends++) {
     if (run !== generation || !avatar.isLive()) return "cancelled";
     if (!avatar.repeat(chunk)) return "failed";
-    log("sent", `${sends > 1 ? `(send ${sends}) ` : ""}${preview(chunk)}`);
-    armReadDeadline();
+    log("sent", `${sends > 1 ? `(send ${sends}) ` : ""}${chunk.length}ch est=${Math.round(bounds.estimate / 1000)}s `
+      + `bound=${Math.round(bounds.speak / 1000)}s read=${Math.round(bounds.read / 1000)}s "${preview(chunk)}"`);
+    armReadDeadline(bounds.read);
 
     if (await waitForSpeakStart()) return "started";
     if (run !== generation) return "cancelled";
 
+    // A late speak_started means the chunk did reach text-to-speech after all and is being spoken
+    // now. Resending over it would make the avatar say the same line twice, so it never happens.
+    if (speakingNow) { log("speak_started late; not resending"); return "started"; }
+
     const next = speakStartAction(sends);
     if (next.action === "resend") {
-      console.warn(`[read] no avatar.speak_started within ${SPEAK_START_MS / 1000} s; resending: ${preview(chunk)}`);
+      console.warn(`[read] no avatar.speak_started within ${SPEAK_START_MS / 1000} s; resending: "${preview(chunk)}"`);
       continue;
     }
     console.warn(`[read] ${next.warn}: nothing after a resend; waiting out the speak_ended bound`);
@@ -224,18 +241,30 @@ async function readScript(text) {
   await pause(READY_SETTLE_MS);
   if (run !== generation || !avatar.isLive()) return;
 
-  for (const chunk of splitScript(text)) {
+  // Both bounds are sized per chunk: the chunk's own speech for the speak_ended wait, and
+  // everything still unsaid for the hang guard, which is re-armed as each chunk goes out.
+  const chunks = splitScript(text);
+  let unsaid = chunks.reduce((n, c) => n + c.length, 0);
+
+  for (const chunk of chunks) {
     if (run !== generation || !avatar.isLive()) { clearTimeout(readDeadline); return; }
 
-    const sent = await sendChunk(chunk, run);
+    const bounds = {
+      estimate: estimateMs(chunk.length, speed),
+      speak: speakBoundMs(chunk.length, speed),
+      read: readBoundMs(unsaid, speed),
+    };
+
+    const sent = await sendChunk(chunk, run, bounds);
     if (sent === "cancelled") return;
     if (sent === "failed") { cancelRead(); finish("Stopped"); return; }
 
-    const how = await waitForSpeakEnd();
+    const how = await waitForSpeakEnd(bounds.speak);
     if (how === "cancelled") return; // cancelRead already cleared the deadline
     if (how === "timeout") {
-      console.warn(`[read] no avatar.speak_ended within ${SPEAK_TIMEOUT_MS / 1000} s; moving on: ${preview(chunk)}`);
+      console.warn(`[read] no avatar.speak_ended within ${Math.round(bounds.speak / 1000)} s; moving on: "${preview(chunk)}"`);
     }
+    unsaid -= chunk.length;
   }
   clearTimeout(readDeadline);
   readDeadline = null;
@@ -253,6 +282,7 @@ async function readScript(text) {
 // ---------- session ----------
 
 let script = ""; // the script the live session was started for
+let speed = 1;   // the cadence it was started at, which is what the waits are sized against
 
 const avatar = createAvatarSession({
   video: el.video,
@@ -263,7 +293,7 @@ const avatar = createAvatarSession({
   onStatus: setStatus,
   // A start really is happening: take the script it was started for, and clear the state again in
   // case this start came from anywhere but the Go button.
-  onStarting: (req) => { script = req.script; resetReadState(); },
+  onStarting: (req) => { script = req.script; speed = req.speed; resetReadState(); },
   onSessionState: (state) => log("session.state_changed", String(state)),
   onStreamReady: () => {
     streamReady = true;
@@ -279,11 +309,13 @@ const avatar = createAvatarSession({
   onStartFailed: (err) => setStatus(err.fromServer ? err.message : "The avatar is unavailable right now. " + (err.message || "")),
   onDisconnected: cancelRead,
   onSpeakStarted: () => {
+    speakingNow = true;
     log("avatar.speak_started");
     setStatus("Reading");
     if (pendingSpeakStart) pendingSpeakStart(true);
   },
   onSpeakEnded: () => {
+    speakingNow = false;
     log("avatar.speak_ended");
     if (pendingSpeakEnd) pendingSpeakEnd("ended");
   },

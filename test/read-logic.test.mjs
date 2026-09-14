@@ -7,11 +7,16 @@ import { readFileSync } from "node:fs";
 
 import {
   buttonState,
+  estimateMs,
+  readBoundMs,
   readyToSpeak,
+  speakBoundMs,
   speakStartAction,
   splitScript,
+  CHARS_PER_SEC,
   CHUNK_LIMIT,
   MAX_SPEAK_SENDS,
+  SPEAK_BOUND_FLOOR_MS,
 } from "../src/js/read-logic.js";
 
 const READ_JS = readFileSync(new URL("../src/js/read.js", import.meta.url), "utf8");
@@ -77,9 +82,19 @@ test("the tail is on the natural end of a read, and Stop never waits", () => {
   assert.match(readScript[0], /TAIL_MS/, "the tail belongs on the natural end of the read");
 });
 
-test("the existing bounds are unchanged by the tail", () => {
-  assert.match(READ_JS, /const SPEAK_TIMEOUT_MS = 20000;/);
-  assert.match(READ_JS, /const READ_TIMEOUT_MS = 30000;/);
+test("the speech bounds are computed, never hard-coded in the controller", () => {
+  // The defect this pins: a fixed 20 s per-chunk bound expired on a chunk holding 80 s of speech,
+  // and the next chunk's repeat then talked over the one still playing.
+  assert.doesNotMatch(READ_JS, /SPEAK_TIMEOUT_MS|READ_TIMEOUT_MS/, "the fixed bounds are gone");
+  assert.match(READ_JS, /waitForSpeakEnd\(bounds\.speak\)/, "the chunk wait takes a computed bound");
+  assert.match(READ_JS, /armReadDeadline\(bounds\.read\)/, "so does the hang guard");
+  for (const fn of ["estimateMs", "speakBoundMs", "readBoundMs"]) {
+    assert.match(READ_JS, new RegExp(`${fn}\\(`), `${fn} must be the source of the bound`);
+  }
+});
+
+test("the tail is still a fixed hold, and still 2 s", () => {
+  assert.match(READ_JS, /const TAIL_MS = 2000;/);
 });
 
 test("two consecutive reads: Go, Stop while reading, Go again", () => {
@@ -198,10 +213,105 @@ test("there is exactly one place a chunk is sent", () => {
   assert.match(sendChunk[0], /waitForSpeakStart\(\)/, "and it waits for the receipt");
 });
 
+test("a chunk that is already speaking is never spoken over", () => {
+  // The invariant: no repeat goes out while speak_started has arrived and speak_ended has not.
+  // The resend is the only send that could violate it, so it is guarded on speakingNow.
+  const sendChunk = READ_JS.match(/async function sendChunk\([\s\S]*?\n\}/)[0];
+  const guard = sendChunk.indexOf("if (speakingNow)");
+  const resend = sendChunk.indexOf("continue;");
+  assert.ok(guard > -1, "the resend must be guarded on speakingNow");
+  assert.ok(guard < resend, "and the guard must come before the resend");
+
+  // The next chunk is only sent after the current one's speak_ended or its bound, never sooner.
+  assert.match(READ_JS, /const sent = await sendChunk\([\s\S]{0,400}?await waitForSpeakEnd\(bounds\.speak\)/);
+});
+
 test("nothing is spoken straight from onConnected any more", () => {
   const onConnected = READ_JS.match(/onConnected: \(\) => \{[\s\S]*?\n  \},/);
   assert.ok(onConnected, "onConnected must exist");
   assert.doesNotMatch(onConnected[0], /avatar\.repeat\(/, "the send must go through the readiness gate");
+});
+
+test("the estimate is characters over the rate, divided by cadence", () => {
+  // 1200 characters at 12 a second is 100 s of speech at cadence 1.0.
+  assert.equal(estimateMs(1200, 1.0), 100000);
+  assert.equal(estimateMs(CHARS_PER_SEC, 1.0), 1000, "one second's worth is one second");
+  assert.equal(estimateMs(0, 1.0), 0);
+});
+
+test("a slower cadence estimates longer, a faster one shorter", () => {
+  const slow = estimateMs(1200, 0.8);
+  const normal = estimateMs(1200, 1.0);
+  const fast = estimateMs(1200, 1.2);
+  assert.ok(slow > normal && normal > fast, `expected ${slow} > ${normal} > ${fast}`);
+  assert.equal(slow, 125000);
+  assert.equal(Math.round(fast), 83333);
+});
+
+test("the per-chunk bound always outlasts the speech it covers, at every cadence", () => {
+  for (const speed of [0.8, 1.0, 1.2]) {
+    for (const chars of [1, 50, CHUNK_LIMIT, 1000, 1500]) {
+      const bound = speakBoundMs(chars, speed);
+      const speech = estimateMs(chars, speed);
+      assert.ok(bound > speech, `bound ${bound} must exceed ${speech} (${chars}ch at ${speed})`);
+      assert.ok(bound >= SPEAK_BOUND_FLOOR_MS, `bound ${bound} must respect the floor`);
+    }
+  }
+});
+
+test("the bound that failed in the field would now be generous", () => {
+  // The receipt: a ~1000-character chunk at cadence 1.0 was cut off by a fixed 20 s bound after
+  // about 370 characters. That chunk is ~83 s of speech.
+  const speech = estimateMs(1000, 1.0);
+  assert.ok(speech > SPEAK_BOUND_FLOOR_MS, "the old fixed bound was shorter than the speech");
+  assert.ok(speakBoundMs(1000, 1.0) > speech, "the new bound is not");
+});
+
+test("a short chunk still gets the floor, not a trivially small bound", () => {
+  assert.equal(speakBoundMs(1, 1.0), SPEAK_BOUND_FLOOR_MS);
+});
+
+test("the hang guard always outlasts the per-chunk bound of what is left", () => {
+  // Otherwise the guard would fire on a read that is progressing perfectly well.
+  for (const speed of [0.8, 1.0, 1.2]) {
+    for (const chars of [1, 50, CHUNK_LIMIT, 1000, 1500]) {
+      assert.ok(
+        readBoundMs(chars, speed) > speakBoundMs(chars, speed),
+        `read bound must exceed the chunk bound (${chars}ch at ${speed})`,
+      );
+    }
+  }
+});
+
+test("the hang guard shrinks as the read progresses", () => {
+  assert.ok(readBoundMs(1200, 1.0) > readBoundMs(400, 1.0));
+});
+
+test("a blank line always ends a chunk", () => {
+  const chunks = splitScript("First paragraph.\n\nSecond paragraph.");
+  assert.deepEqual(chunks, ["First paragraph.", "Second paragraph."]);
+});
+
+test("paragraphs are split even when both would fit in one chunk", () => {
+  // A paragraph break is a real pause; running them together would flatten the reading.
+  const chunks = splitScript("Short one.\n\n\nShort two.\n\nShort three.");
+  assert.deepEqual(chunks, ["Short one.", "Short two.", "Short three."]);
+});
+
+test("a 1200-character script chunks without ever breaking a sentence", () => {
+  const sentence = "This is a sentence of a reasonable length that a person might actually write. ";
+  const script = (sentence.repeat(8) + "\n\n" + sentence.repeat(8)).trim().slice(0, 1200);
+  const chunks = splitScript(script);
+
+  assert.ok(chunks.length > 1, "1200 characters must not be one chunk");
+  for (const chunk of chunks) {
+    assert.ok(chunk.length <= CHUNK_LIMIT, `chunk of ${chunk.length} exceeds the limit`);
+    assert.ok(chunk.trim() === chunk, "chunks must not carry surrounding whitespace");
+  }
+  // Every chunk boundary falls after a full stop, so none of them cuts a sentence in half.
+  for (const chunk of chunks.slice(0, -1)) {
+    assert.match(chunk, /[.!?][)"'”’]?$/, `chunk ends mid-sentence: "${chunk.slice(-40)}"`);
+  }
 });
 
 test("a script within the limit is one piece, untouched", () => {
@@ -236,10 +346,10 @@ test("text with no sentence punctuation still splits, and never mid-word", () =>
 
 test("a single word longer than the limit is still emitted", () => {
   const chunks = splitScript("a".repeat(1500));
-  assert.deepEqual(chunks.map((c) => c.length), [1000, 500]);
+  assert.deepEqual(chunks.map((c) => c.length), [400, 400, 400, 300]);
 });
 
-test("the page's own 1500-character cap is inside two chunks at most", () => {
+test("every chunk of a full-length script is inside the limit", () => {
   const atCap = "Sentence here. ".repeat(100).trim().slice(0, 1500);
-  assert.ok(splitScript(atCap).length <= 2);
+  for (const chunk of splitScript(atCap)) assert.ok(chunk.length <= CHUNK_LIMIT);
 });

@@ -1,11 +1,43 @@
 /* The Read page's decisions that need no DOM and no SDK, kept apart so they can be tested.
    read.js holds the wiring; this holds the rules. */
 
-// The largest script sent as a single repeat() call. The SDK puts no length limit on repeat(): it
-// serialises the text into one command event over a reliable data channel, and 1500 characters is
-// far inside that. The vendor's own limit is not documented, so anything longer is sent as several
-// calls rather than risk a silent truncation. A script inside the limit is one continuous read.
-export const CHUNK_LIMIT = 1000;
+/* The largest text sent as one repeat() call. The SDK puts no length limit on repeat(), but a
+   chunk is also the unit a bound expiry throws away, so a paragraph-sized chunk made the cost of
+   one expiry a paragraph of speech. Smaller chunks keep that cost to a few sentences. */
+export const CHUNK_LIMIT = 400;
+
+/* Speaking rate used to size the waits. Roughly 150 words a minute at cadence 1.0. It is a floor
+   rather than an average on purpose: a low rate estimates a long duration, which makes every bound
+   longer, and a bound that is too generous only delays a failure while one that is too short cuts
+   off speech that was going fine. */
+export const CHARS_PER_SEC = 12;
+
+// A wait is the estimate doubled, plus a fixed pad for connection and queueing. The floor is what
+// the per-chunk bound used to be in total, so a very short chunk is still given real time.
+export const SPEAK_BOUND_FACTOR = 2;
+export const SPEAK_BOUND_PAD_MS = 10000;
+export const SPEAK_BOUND_FLOOR_MS = 20000;
+export const READ_BOUND_FACTOR = 2;
+export const READ_BOUND_PAD_MS = 15000;
+
+// How long this many characters should take to say at this cadence.
+export function estimateMs(chars, speed) {
+  return (chars / CHARS_PER_SEC) * 1000 / speed;
+}
+
+// The longest one chunk may go without its avatar.speak_ended before the read moves past it.
+export function speakBoundMs(chars, speed) {
+  return Math.max(SPEAK_BOUND_FLOOR_MS, estimateMs(chars, speed) * SPEAK_BOUND_FACTOR + SPEAK_BOUND_PAD_MS);
+}
+
+/* The longest the whole read may hang after a chunk goes out, sized to everything still unsaid.
+   It must always outlast the per-chunk bound of that same text: a hang guard that fires first
+   would cut off a read that is progressing perfectly well, which is the bug this pair exists to
+   prevent, only one level up. */
+export function readBoundMs(remainingChars, speed) {
+  const scaled = estimateMs(remainingChars, speed) * READ_BOUND_FACTOR + READ_BOUND_PAD_MS;
+  return Math.max(scaled, speakBoundMs(remainingChars, speed) + READ_BOUND_PAD_MS);
+}
 
 /* The one button is Go when nothing is running and Stop when something is.
 
@@ -56,19 +88,30 @@ function hardSplit(sentence, limit) {
   return out;
 }
 
-// Sentences, regrouped into the largest pieces that still fit. A script within the limit comes
-// back untouched as a single piece, which is the common case and reads without a seam.
+/* Paragraphs first, then sentences regrouped into the largest pieces that still fit.
+
+   A blank line always ends a chunk: a paragraph break is a real pause in the reading, so running
+   two paragraphs into one chunk would flatten it. Within a paragraph, sentences are kept whole and
+   packed up to the limit, so a chunk never ends mid-sentence unless a single sentence is itself
+   longer than the limit, which is the only case hardSplit handles. */
 export function splitScript(text, limit = CHUNK_LIMIT) {
   const clean = text.trim();
-  if (clean.length <= limit) return clean ? [clean] : [];
+  if (!clean) return [];
   const chunks = [];
-  let current = "";
-  for (const sentence of clean.split(/(?<=[.!?][)"'”’]?)\s+/)) {
-    for (const piece of hardSplit(sentence, limit)) {
-      if (current && current.length + 1 + piece.length > limit) { chunks.push(current); current = piece; }
-      else current = current ? current + " " + piece : piece;
+
+  for (const paragraph of clean.split(/\n\s*\n+/)) {
+    const para = paragraph.trim();
+    if (!para) continue;
+    if (para.length <= limit) { chunks.push(para); continue; }
+
+    let current = "";
+    for (const sentence of para.split(/(?<=[.!?][)"'”’]?)\s+/)) {
+      for (const piece of hardSplit(sentence.trim(), limit)) {
+        if (current && current.length + 1 + piece.length > limit) { chunks.push(current); current = piece; }
+        else current = current ? current + " " + piece : piece;
+      }
     }
+    if (current) chunks.push(current);
   }
-  if (current) chunks.push(current);
   return chunks;
 }
