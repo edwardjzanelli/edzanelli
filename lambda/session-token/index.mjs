@@ -6,8 +6,13 @@
 //   speed:  speaking speed 0.80 to 1.20 in steps of 0.05; defaults to config voiceSpeed, then 1.
 //   script: read mode only, required there. The text the avatar will read; 1500 characters at most.
 //
+// In read mode the script is checked against moderation-policy.txt by an OpenAI call before any
+// token is minted. The check is fail-closed: if it cannot be made, or comes back unreadable,
+// nothing is minted. A refused script never reaches LiveAvatar.
+//
 // Environment:
 //   LIVEAVATAR_API_KEY   required. The only secret this function holds.
+//   OPENAI_API_KEY       required for read mode. Reviews the script against moderation-policy.txt.
 //   ALLOWED_ORIGINS      comma-separated, e.g. "https://edzanelli.com,http://localhost:8080"
 //   SANDBOX              "1" to mint sandbox sessions (no credits; stock avatars only), anything else for live.
 //   DEBUG                "1" to include LiveAvatar's status and message in a 502 response. Unset for launch.
@@ -19,6 +24,66 @@ import { readFileSync } from "node:fs";
 
 const CONFIG = JSON.parse(readFileSync(new URL("./config.json", import.meta.url)));
 const TOKEN_URL = "https://api.liveavatar.com/v1/sessions/token";
+
+// Read at cold start so the policy is a versioned file in the repo rather than a string in here.
+const POLICY = readFileSync(new URL("./moderation-policy.txt", import.meta.url), "utf8");
+const MODERATION_URL = "https://api.openai.com/v1/chat/completions";
+const MODERATION_MODEL = "gpt-4o-mini";
+const MODERATION_TIMEOUT_MS = 10000;
+const MODERATION_UNAVAILABLE = "I can't check that script right now. Please try again in a moment.";
+
+// Asks the policy whether this script may be read aloud. Returns { allowed: true },
+// { allowed: false, reason } or { failed: true }. Anything unexpected is a failure, not an
+// allowance: the caller mints nothing unless the answer is a clear yes.
+async function moderate(script) {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    console.error("OPENAI_API_KEY is not set; read mode cannot moderate and will refuse everything");
+    return { failed: true };
+  }
+
+  let res, text;
+  try {
+    res = await fetch(MODERATION_URL, {
+      method: "POST",
+      headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        model: MODERATION_MODEL,
+        temperature: 0,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: POLICY },
+          { role: "user", content: script },
+        ],
+      }),
+      signal: AbortSignal.timeout(MODERATION_TIMEOUT_MS),
+    });
+    text = await res.text();
+  } catch (err) {
+    console.error("moderation request failed", err.message);
+    return { failed: true };
+  }
+
+  if (!res.ok) {
+    console.error("moderation request rejected", res.status, text.slice(0, 300));
+    return { failed: true };
+  }
+
+  let verdict;
+  try {
+    verdict = JSON.parse(JSON.parse(text).choices[0].message.content);
+  } catch {
+    console.error("moderation response could not be parsed", text.slice(0, 300));
+    return { failed: true };
+  }
+
+  if (verdict.allowed === true) return { allowed: true };
+  if (verdict.allowed === false && typeof verdict.reason === "string" && verdict.reason.trim()) {
+    return { allowed: false, reason: verdict.reason.trim() };
+  }
+  console.error("moderation verdict was not usable", text.slice(0, 300));
+  return { failed: true };
+}
 
 const json = (statusCode, body) => ({
   statusCode,
@@ -77,6 +142,17 @@ export const handler = async (event) => {
     ? avatar.avatar_id && voiceId
     : avatar.avatar_id && voiceId && CONFIG.context_id && llm.llm_configuration_id;
   if (!configured) return json(503, { error: "this combination is not configured yet" });
+
+  // Nothing is minted for a read until the script has passed the policy. The page shows these two
+  // messages to the visitor word for word, so they are written for a visitor to read.
+  if (mode === "read") {
+    const verdict = await moderate(req.script);
+    if (verdict.failed) return json(502, { error: MODERATION_UNAVAILABLE });
+    if (!verdict.allowed) {
+      console.log(`refused a script: ${verdict.reason}`);
+      return json(403, { error: `I'm sorry, but I'm unable to say that because it is ${verdict.reason}.` });
+    }
+  }
 
   // LITE carries the avatar and the voice and nothing else: no context, no LLM configuration.
   // FULL adds the context the avatar answers from and the LLM that writes the answers.

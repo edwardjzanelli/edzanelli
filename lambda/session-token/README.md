@@ -2,7 +2,7 @@
 
 Mints LiveAvatar session tokens for the two avatar pages. Spec v1.2 sections 7, 8, 10.
 
-Files: `index.mjs` (handler), `config.json` (allow-lists and IDs). No dependencies; Node 20 has `fetch` built in.
+Files: `index.mjs` (handler), `config.json` (allow-lists and IDs), `moderation-policy.txt` (the rules a read script is held to, read at cold start). All three must be in the deployment package. No dependencies; Node 20 has `fetch` built in.
 
 ## Request
 
@@ -33,7 +33,7 @@ Both modes answer `{ "session_id": "...", "session_token": "..." }`.
 
 ## Deploy (AWS CLI, run from `lambda/session-token/`)
 ```
-zip -j session-token.zip index.mjs config.json
+zip -j session-token.zip index.mjs config.json moderation-policy.txt
 
 aws iam create-role --role-name askEdTokenRole \
   --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"lambda.amazonaws.com"},"Action":"sts:AssumeRole"}]}'
@@ -43,20 +43,20 @@ aws iam attach-role-policy --role-name askEdTokenRole \
 aws lambda create-function --function-name askEdSessionToken \
   --runtime nodejs20.x --handler index.handler --zip-file fileb://session-token.zip \
   --role arn:aws:iam::<ACCOUNT_ID>:role/askEdTokenRole --timeout 15 \
-  --environment "Variables={LIVEAVATAR_API_KEY=<key>,ALLOWED_ORIGINS=https://edzanelli.com,SANDBOX=1}"
+  --environment "Variables={LIVEAVATAR_API_KEY=<key>,OPENAI_API_KEY=<key>,ALLOWED_ORIGINS=https://edzanelli.com,SANDBOX=1}"
 
 aws lambda create-function-url-config --function-name askEdSessionToken --auth-type NONE \
   --cors '{"AllowOrigins":["https://edzanelli.com"],"AllowMethods":["POST"],"AllowHeaders":["content-type"],"MaxAge":3600}'
 aws lambda add-permission --function-name askEdSessionToken --statement-id public-url \
   --action lambda:InvokeFunctionUrl --principal "*" --function-url-auth-type NONE
 ```
-The `FunctionUrl` printed by `create-function-url-config` goes into `website/js/ask.js` as `TOKEN_URL`.
+The `FunctionUrl` printed by `create-function-url-config` goes into `src/js/avatar-session.js` as `TOKEN_URL`, which both pages import.
 
 For local testing add `http://localhost:8080` to `ALLOWED_ORIGINS` on both the environment variable and the function URL CORS list, and remove it before launch.
 
 ## Update
 ```
-zip -j session-token.zip index.mjs config.json
+zip -j session-token.zip index.mjs config.json moderation-policy.txt
 aws lambda update-function-code --function-name askEdSessionToken --zip-file fileb://session-token.zip
 ```
 Going live: `aws lambda update-function-configuration --function-name askEdSessionToken --environment "Variables={...,SANDBOX=0}"`.
@@ -64,7 +64,31 @@ Going live: `aws lambda update-function-configuration --function-name askEdSessi
 ## Pause the demo
 `aws lambda delete-function-url-config --function-name askEdSessionToken`. The page then shows the unavailable state; nothing else breaks.
 
+## Moderation (read mode only)
+Before a read token is minted, the script is sent to OpenAI (`gpt-4o-mini`, `temperature` 0, a
+JSON-object response) with `moderation-policy.txt` as the system message and the script as the user
+message. The answer is `{"allowed": true}` or `{"allowed": false, "reason": "<phrase>"}`, and the
+reason completes the sentence the visitor sees.
+
+- Refused: `403 {"error": "I'm sorry, but I'm unable to say that because it is <reason>."}`
+- Cannot be checked (call failed, timed out after 10 s, or the answer was not usable):
+  `502 {"error": "I can't check that script right now. Please try again in a moment."}`
+
+Either way no token is minted. **The check fails closed**: if the moderation call cannot be
+completed, nothing is read. Deleting `OPENAI_API_KEY` therefore turns the Read page off while
+leaving Ask working, which is the quickest way to pause just that page.
+
+`OPENAI_API_KEY` is set in the Lambda console (or with `update-function-configuration`) and is
+never committed. Edit the policy in `moderation-policy.txt` and redeploy; it is read at cold start,
+so it is versioned with the code rather than typed into a console.
+
 ## Test
+The Lambda's side of the moderation contract is covered by `test/moderation.test.mjs`, which mocks
+`fetch`. From the repository root:
+```
+npm test
+```
+Against the deployed function:
 ```
 curl -X POST <FunctionUrl> -H "origin: https://edzanelli.com" -H "content-type: application/json" \
   -d '{"avatar":"ed","language":"en","llm":"claude"}'
@@ -72,4 +96,4 @@ curl -X POST <FunctionUrl> -H "origin: https://edzanelli.com" -H "content-type: 
 curl -X POST <FunctionUrl> -H "origin: https://edzanelli.com" -H "content-type: application/json" \
   -d '{"mode":"read","avatar":"ed","language":"en","script":"Testing the read page."}'
 ```
-Expect `{"session_id":"...","session_token":"..."}`. A 503 means an ID in `config.json` is still blank; a 502 means LiveAvatar refused, and the reason is in CloudWatch.
+Expect `{"session_id":"...","session_token":"..."}`. A 503 means an ID in `config.json` is still blank; a 502 means either LiveAvatar refused or, in read mode, the script could not be checked; a 403 on a read means the policy refused the script. Every one of them logs its reason to CloudWatch.
