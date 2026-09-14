@@ -239,6 +239,29 @@ figcaption { font-size: 0.9rem; color: var(--ink-light); text-align: center; mar
 .disclosure, .fallback { font-size: 0.9rem; color: var(--ink-light); text-align: center; margin: 0; }
 .disclosure { margin-top: 1.5rem; }
 .note { font-size: 0.85rem; color: var(--ink-light); text-align: center; margin: 0.75rem 0 0; opacity: 0.85; }
+
+/* ------------------------------------------------------------
+   Read: the script box, its counter, and the limits note
+   ------------------------------------------------------------ */
+.script-field textarea {
+  display: block; width: 100%; resize: vertical; min-height: 9rem;
+  font-family: var(--sans); font-size: 1rem; font-weight: 300; line-height: 1.65;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--rule); border-radius: 8px; background: var(--paper); color: var(--ink); outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.script-field textarea:focus { border-color: var(--teal); box-shadow: 0 0 0 3px rgba(31, 111, 120, 0.12); }
+.script-field textarea:disabled { opacity: 0.5; }
+.counter { font-size: 0.82rem; color: var(--ink-light); text-align: right; margin: 0.35rem 0 0; }
+.read-go { display: flex; margin: 0.9rem 0 1.25rem; }
+.read-go .btn { min-width: 110px; }
+
+.note.limits {
+  text-align: left; opacity: 1; max-width: var(--text-col); margin: 1.75rem auto 0;
+  background: var(--card); border: 1px solid var(--rule); border-radius: 8px; padding: 1.1rem 1.25rem;
+}
+.note.limits h2 { font-size: 1.15rem; margin-bottom: 0.4rem; }
+.note.limits p { margin: 0; font-size: 0.85rem; }
 .caps { font-variant: small-caps; letter-spacing: 0.04em; }
 .ask-cta { text-align: center; margin-top: 2.5rem; }
 .ask-cta p { margin-bottom: 1rem; }
@@ -269,6 +292,7 @@ figcaption { font-size: 0.9rem; color: var(--ink-light); text-align: center; mar
     .logo-link img { height: 42px; }
   .links { flex-direction: column; gap: 0.9rem; }
   .ask-controls label, .ask-controls select, .ask-controls .btn { width: 100%; }
+  .read-go .btn { width: 100%; }
   .turn { grid-template-columns: 1fr; gap: 2px; }
   .card { padding: 1.5rem; }
 }

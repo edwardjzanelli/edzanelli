@@ -1,16 +1,9 @@
 /* Ask Ed. Spec v1.2 sections 4, 7, 8, 9.
-   One session at a time. Any selector change while live restarts the session with the new settings.
-   The only server call is the token Lambda; everything after that is the LiveAvatar SDK. */
+   The page controller: selectors, Start/Stop, the composer, and the transcript. The session itself
+   lives in avatar-session.js, which the Read page shares.
+   Any selector change while live restarts the session with the new settings. */
 
-import {
-  LiveAvatarSession,
-  SessionEvent,
-  AgentEventsEnum,
-  SessionState,
-  SessionDisconnectReason,
-} from "./vendor/liveavatar.esm.js";
-
-const TOKEN_URL = "https://bw7rxcyn7l47nrc2f3ors4bwzi0mqzhp.lambda-url.us-west-1.on.aws"; // Lambda function URL, see lambda/session-token/README.md
+import { createAvatarSession } from "./avatar-session.js";
 
 const LLM_LABELS = { openai: "OpenAI", claude: "Claude", gemini: "Gemini" };
 
@@ -30,26 +23,13 @@ const el = {
   transcript: document.getElementById("transcript"),
 };
 
-let session = null;      // the live LiveAvatarSession, or null
-let startPromise = null; // the in-flight s.start(), so stop() can wait for it before stopping
-let busy = false;        // true while starting or stopping
-let currentLlm = null;   // label for the avatar turns of the live session
-let speaking = false;    // true between avatar.speak_started and avatar.speak_ended
-
-// Every start, stop and restart runs through this queue, one at a time, so a selector change
-// during a connect can never leave two sessions alive.
-let queue = Promise.resolve();
-let restartQueued = false;
-function enqueue(fn) {
-  queue = queue.then(fn, fn);
-  return queue;
-}
+let currentLlm = null; // label for the avatar turns of the live session
 
 // ---------- UI helpers ----------
 
 function setStatus(text) { el.status.textContent = text; }
 
-function setControls(live) {
+function setControls({ live, busy, speaking }) {
   el.start.hidden = live;
   el.stop.hidden = !live;
   el.poster.hidden = live;
@@ -89,141 +69,49 @@ function describe(sel) {
   return `${el.avatar.options[el.avatar.selectedIndex].text}, ${el.language.options[el.language.selectedIndex].text}, answers by ${LLM_LABELS[sel.llm]}, speed ${sel.speed.toFixed(2)}`;
 }
 
-// ---------- session lifecycle ----------
+// ---------- session ----------
 
-async function fetchToken(sel) {
-  if (!TOKEN_URL) throw new Error("token endpoint not configured");
-  const res = await fetch(TOKEN_URL, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(sel),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok || !data.session_token) throw new Error(data.error || `token request failed (${res.status})`);
-  return data.session_token;
-}
-
-async function start() {
-  if (busy || session) return;
-  busy = true;
-  const sel = selection();
-  currentLlm = LLM_LABELS[sel.llm];
-  setControls(false);
-  setStatus("Connecting");
-  addDivider("New conversation: " + describe(sel));
-
-  try {
-    const token = await fetchToken(sel);
-    const s = new LiveAvatarSession(token, { voiceChat: true });
-    wire(s);
-    session = s;
-    startPromise = s.start();
-    await startPromise;
-    startPromise = null;
-    // stream_ready attaches the video; state CONNECTED flips the controls.
-  } catch (err) {
-    console.error("start failed", err);
-    session = null;
-    startPromise = null;
-    busy = false;
-    setControls(false);
-    setStatus("The demo is unavailable right now. " + (err.message || ""));
-  }
-}
-
-async function stop(reason) {
-  if (!session) return;
-  const s = session;
-  session = null;
-  busy = true;
-  speaking = false;
-  setControls(true);
-  setStatus(reason || "Ending");
-  // The SDK ignores stop() while start() is still running; wait for it first.
-  if (startPromise) { try { await startPromise; } catch { /* start already reported */ } startPromise = null; }
-  try { await s.stop(); } catch (err) { console.warn("stop error", err); }
-  detach();
-  busy = false;
-  setControls(false);
-  setStatus(reason || "Ended");
-}
-
-function detach() {
-  el.video.srcObject = null;
-  // The SDK attaches audio to media elements it creates; make sure none survive a stop.
-  for (const m of document.querySelectorAll("audio, video")) {
-    if (m !== el.video && m.srcObject) { m.srcObject = null; m.remove(); }
-  }
-}
-
-function wire(s) {
-  s.on(SessionEvent.SESSION_STREAM_READY, () => {
-    s.attach(el.video);
-  });
-
-  s.on(SessionEvent.SESSION_STATE_CHANGED, (state) => {
-    if (state === SessionState.CONNECTED) {
-      busy = false;
-      setControls(true);
-      setStatus("Listening. Speak, or type below.");
-    }
-  });
-
-  s.on(SessionEvent.SESSION_DISCONNECTED, (why) => {
-    if (session !== s) return; // we already stopped it
-    session = null;
-    startPromise = null;
-    busy = false;
-    speaking = false;
-    detach();
-    setControls(false);
-    setStatus(
-      why === SessionDisconnectReason.SESSION_START_FAILED ? "The avatar could not start. Try again."
-      : why === SessionDisconnectReason.SERVER_INITIATED ? "The session ended (three-minute limit)."
-      : "Disconnected."
-    );
-  });
-
-  s.on(AgentEventsEnum.USER_SPEAK_STARTED, () => setStatus("Hearing you"));
-  s.on(AgentEventsEnum.USER_SPEAK_ENDED, () => setStatus("Thinking"));
-  s.on(AgentEventsEnum.AVATAR_SPEAK_STARTED, () => { speaking = true; el.send.disabled = true; setStatus("Speaking (" + currentLlm + ")"); });
-  s.on(AgentEventsEnum.AVATAR_SPEAK_ENDED, () => { speaking = false; el.send.disabled = false; setStatus("Listening"); });
-
-  s.on(AgentEventsEnum.USER_TRANSCRIPTION, (e) => addTurn("user", e.text));
-  s.on(AgentEventsEnum.AVATAR_TRANSCRIPTION, (e) => addTurn("avatar", e.text, currentLlm));
-}
+const avatar = createAvatarSession({
+  video: el.video,
+  sessionConfig: { voiceChat: true },
+  request: selection,
+  onState: setControls,
+  onStatus: setStatus,
+  onStarting: (sel) => {
+    currentLlm = LLM_LABELS[sel.llm];
+    addDivider("New conversation: " + describe(sel));
+  },
+  onConnected: () => setStatus("Listening. Speak, or type below."),
+  onStartFailed: (err) => setStatus("The demo is unavailable right now. " + (err.message || "")),
+  onUserSpeakStarted: () => setStatus("Hearing you"),
+  onUserSpeakEnded: () => setStatus("Thinking"),
+  onSpeakStarted: () => setStatus("Speaking (" + currentLlm + ")"),
+  onSpeakEnded: () => setStatus("Listening"),
+  onUserTurn: (text) => addTurn("user", text),
+  onAvatarTurn: (text) => addTurn("avatar", text, currentLlm),
+});
 
 // ---------- wiring ----------
 
-el.start.addEventListener("click", () => enqueue(start));
-el.stop.addEventListener("click", () => enqueue(() => stop("Ended")));
+el.start.addEventListener("click", () => avatar.queueStart());
+el.stop.addEventListener("click", () => avatar.queueStop("Ended"));
 
-// A change while live restarts with the new settings. A second change while that restart is
-// still queued does not queue another; the queued restart reads the selectors when it runs.
 for (const sel of [el.avatar, el.language, el.llm, el.speed]) {
   sel.addEventListener("change", () => {
-    if (!session && !busy) return;
-    if (restartQueued) return;
-    restartQueued = true;
-    enqueue(async () => {
-      restartQueued = false;
-      await stop("Switching");
-      await start();
-    });
+    if (!avatar.isLive() && !avatar.isBusy()) return;
+    avatar.queueRestart("Switching");
   });
 }
 
 el.composer.addEventListener("submit", (ev) => {
   ev.preventDefault();
   const text = el.text.value.trim();
-  if (!text || !session || speaking) return;
+  if (!text || !avatar.isLive() || avatar.isSpeaking()) return;
   // Not added to the transcript here: the SDK echoes typed text back as a user.transcription
   // event, which is what adds the turn (adding it here too printed it twice).
-  try { session.message(text); } catch (err) { console.warn("message failed", err); }
+  avatar.message(text);
   el.text.value = "";
 });
 
-window.addEventListener("pagehide", () => { if (session) session.stop().catch(() => {}); });
-
-setControls(false);
+setControls({ live: false, busy: false, speaking: false });
 setStatus("");

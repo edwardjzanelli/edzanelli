@@ -1,8 +1,29 @@
 # session-token Lambda
 
-Mints a LiveAvatar FULL-mode session token for the Ask Ed page. Spec v1.2 sections 7, 8, 10.
+Mints LiveAvatar session tokens for the two avatar pages. Spec v1.2 sections 7, 8, 10.
 
 Files: `index.mjs` (handler), `config.json` (allow-lists and IDs). No dependencies; Node 20 has `fetch` built in.
+
+## Request
+
+```
+POST <FunctionUrl>
+{ "mode": "ask" | "read", "avatar": "ed|judy|dexter", "language": "en|it", "llm": "openai|claude|gemini", "speed": 1.00, "script": "..." }
+```
+
+`mode` defaults to `ask`. Every mode needs `avatar` and `language`; `speed` is optional everywhere
+(0.80 to 1.20 in steps of 0.05, defaulting to `voiceSpeed` in `config.json`, then 1).
+
+| mode | token | `llm` | `script` | used by |
+| --- | --- | --- | --- | --- |
+| `ask` | `FULL`: the context and an LLM configuration, so the avatar converses | required | ignored | `ask.html` |
+| `read` | `LITE`: avatar and voice only, no context and no LLM | ignored | required, 1500 characters at most | `read.html` |
+
+`read` exists because the Read page never asks the avatar anything: it calls the SDK's `repeat()`,
+which speaks text verbatim, so a session carrying a context and an LLM would pay for machinery it
+never uses. A `read` request with a missing, non-string, or over-length `script` is a 400.
+
+Both modes answer `{ "session_id": "...", "session_token": "..." }`.
 
 ## One-time setup in the LiveAvatar dashboard
 1. Context: create `Ask Ed` from `prompts/ask-ed.txt`. Copy its ID into `config.json` as `context_id`. One context serves both languages; the prompt tells the avatar to answer in the visitor's language.
@@ -47,5 +68,8 @@ Going live: `aws lambda update-function-configuration --function-name askEdSessi
 ```
 curl -X POST <FunctionUrl> -H "origin: https://edzanelli.com" -H "content-type: application/json" \
   -d '{"avatar":"ed","language":"en","llm":"claude"}'
+
+curl -X POST <FunctionUrl> -H "origin: https://edzanelli.com" -H "content-type: application/json" \
+  -d '{"mode":"read","avatar":"ed","language":"en","script":"Testing the read page."}'
 ```
 Expect `{"session_id":"...","session_token":"..."}`. A 503 means an ID in `config.json` is still blank; a 502 means LiveAvatar refused, and the reason is in CloudWatch.

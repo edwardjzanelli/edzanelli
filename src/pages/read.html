@@ -1,0 +1,85 @@
+<!-- meta
+{
+  "path": "read.html",
+  "title": "Read | Have Ed Zanelli's AI avatar read your script",
+  "description": "Type a script and an AI avatar built by Ed Zanelli reads it back, word for word.",
+  "og_title": "Read",
+  "og_description": "Type a script and an AI avatar built by Ed Zanelli reads it back, word for word.",
+  "og_image": "assets/og-ask.jpg",
+  "header": "header-site",
+  "current": "read",
+  "scripts": ["js/site.js"],
+  "module_scripts": ["js/read.js"]
+}
+-->
+<main class="ask-main">
+  <div class="wrap">
+
+    <h1>Read</h1>
+    <p class="lead">Type a script, pick an avatar, a language, and the speech cadence, then press Go. The avatar reads what you wrote, word for word.</p>
+
+    <div class="card accent-teal ask-card">
+    <div class="ask-controls">
+      <label>
+        Avatar
+        <select id="avatar">
+          <option value="ed">Ed</option>
+          <option value="judy">Judy</option>
+          <option value="dexter">Dexter</option>
+        </select>
+      </label>
+      <label>
+        Language
+        <select id="language">
+          <option value="en">English</option>
+          <option value="it">Italiano</option>
+        </select>
+      </label>
+      <label>
+        Speech cadence
+        <select id="speed">
+          <option value="0.80">0.80</option>
+          <option value="0.85">0.85</option>
+          <option value="0.90">0.90</option>
+          <option value="0.95">0.95</option>
+          <option value="1.00" selected>1.00</option>
+          <option value="1.05">1.05</option>
+          <option value="1.10">1.10</option>
+          <option value="1.15">1.15</option>
+          <option value="1.20">1.20</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="script-field">
+      <label class="visually-hidden" for="script">Script to read</label>
+      <textarea id="script" maxlength="1500" rows="6" placeholder="Type or paste the script you want read aloud"></textarea>
+      <p class="counter" id="counter" aria-live="polite">0 / 1500</p>
+    </div>
+
+    <div class="read-go">
+      <button class="btn btn-primary" id="go" type="button">Go</button>
+    </div>
+
+    <div class="stage">
+      <video id="video" autoplay playsinline></video>
+      <div class="stage-empty" id="poster">Type a script and press Go.</div>
+    </div>
+    <p class="status" id="status" role="status" aria-live="polite"></p>
+    </div>
+
+    <div class="note limits">
+      {{partial:read-limits}}
+    </div>
+
+    <p class="disclosure">This is an AI avatar I built. It reads what you type; it is not me.</p>
+
+    <div class="ask-cta">
+      <div class="divider"></div>
+      <p class="label">Talk with the real me</p>
+      <p>Want to talk about what I could build for you?</p>
+      {{partial:contact-links}}
+    </div>
+
+  </div>
+</main>

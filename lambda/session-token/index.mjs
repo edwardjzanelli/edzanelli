@@ -1,6 +1,10 @@
-// Ask Ed token Lambda. Spec v1.2 sections 7 and 8.
-// POST { avatar, language, llm, speed? } -> { session_id, session_token }
-//   speed: speaking speed 0.80 to 1.20 in steps of 0.05; defaults to config voiceSpeed, then 1.
+// Token Lambda for the Ask and Read pages. Spec v1.2 sections 7 and 8.
+// POST { mode?, avatar, language, llm?, speed?, script? } -> { session_id, session_token }
+//   mode:   "ask" (the default) mints a FULL session: context, LLM, microphone, conversation.
+//           "read" mints a LITE session: no context and no LLM, because the page only calls
+//           repeat() to speak the visitor's script. llm is ignored and not required.
+//   speed:  speaking speed 0.80 to 1.20 in steps of 0.05; defaults to config voiceSpeed, then 1.
+//   script: read mode only, required there. The text the avatar will read; 1500 characters at most.
 //
 // Environment:
 //   LIVEAVATAR_API_KEY   required. The only secret this function holds.
@@ -40,10 +44,26 @@ export const handler = async (event) => {
     return json(400, { error: "body must be JSON" });
   }
 
+  const mode = req.mode ?? "ask";
+  if (mode !== "ask" && mode !== "read") return json(400, { error: "mode must be ask or read" });
+
+  // The Read page speaks the visitor's own words, so the script is part of the request. The page
+  // caps it at 1500 characters; nothing stops a caller from ignoring that, so the cap is here too.
+  if (mode === "read") {
+    if (typeof req.script !== "string" || !req.script.trim()) {
+      return json(400, { error: "script is required in read mode" });
+    }
+    if (req.script.length > 1500) {
+      return json(400, { error: "script must be 1500 characters or fewer" });
+    }
+  }
+
   const avatar = CONFIG.avatars[req.avatar];
   const language = CONFIG.languages[req.language];
-  const llm = CONFIG.llms[req.llm];
-  if (!avatar || !language || !llm) return json(400, { error: "avatar, language, or llm not on the allow-list" });
+  const llm = mode === "read" ? null : CONFIG.llms[req.llm];
+  if (!avatar || !language || (mode === "ask" && !llm)) {
+    return json(400, { error: "avatar, language, or llm not on the allow-list" });
+  }
 
   // Speaking speed: LiveAvatar accepts 0.8 to 1.2; the page offers 0.05 steps. Anything else is rejected.
   let speed = req.speed ?? CONFIG.voiceSpeed ?? 1;
@@ -53,23 +73,28 @@ export const handler = async (event) => {
   speed = Math.round(speed * 100) / 100;
 
   const voiceId = avatar.voice[req.language];
-  if (!avatar.avatar_id || !voiceId || !CONFIG.context_id || !llm.llm_configuration_id) {
-    return json(503, { error: "this combination is not configured yet" });
-  }
+  const configured = mode === "read"
+    ? avatar.avatar_id && voiceId
+    : avatar.avatar_id && voiceId && CONFIG.context_id && llm.llm_configuration_id;
+  if (!configured) return json(503, { error: "this combination is not configured yet" });
 
+  // LITE carries the avatar and the voice and nothing else: no context, no LLM configuration.
+  // FULL adds the context the avatar answers from and the LLM that writes the answers.
   const body = {
-    mode: "FULL",
+    mode: mode === "read" ? "LITE" : "FULL",
     avatar_id: avatar.avatar_id,
     avatar_persona: {
       voice_id: voiceId,
-      context_id: CONFIG.context_id,
       language: language.language,
       voice_settings: { speed },
     },
-    llm_configuration_id: llm.llm_configuration_id,
     max_session_duration: CONFIG.maxSessionDurationSeconds,
     is_sandbox: process.env.SANDBOX === "1",
   };
+  if (mode === "ask") {
+    body.avatar_persona.context_id = CONFIG.context_id;
+    body.llm_configuration_id = llm.llm_configuration_id;
+  }
 
   let res, text;
   try {
@@ -106,6 +131,6 @@ export const handler = async (event) => {
     return json(502, { error: "unexpected response from avatar service" });
   }
 
-  console.log(`minted session ${payload.session_id} avatar=${req.avatar} lang=${req.language} llm=${req.llm} sandbox=${body.is_sandbox}`);
+  console.log(`minted session ${payload.session_id} mode=${body.mode} avatar=${req.avatar} lang=${req.language} llm=${mode === "read" ? "-" : req.llm} sandbox=${body.is_sandbox}`);
   return json(200, { session_id: payload.session_id, session_token: payload.session_token });
 };
