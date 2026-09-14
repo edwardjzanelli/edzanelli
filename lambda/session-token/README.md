@@ -16,12 +16,34 @@ POST <FunctionUrl>
 
 | mode | token | `llm` | `script` | used by |
 | --- | --- | --- | --- | --- |
-| `ask` | `FULL`: the context and an LLM configuration, so the avatar converses | required | ignored | `ask.html` |
-| `read` | `LITE`: avatar and voice only, no context and no LLM | ignored | required, 1500 characters at most | `read.html` |
+| `ask` | `FULL` with `context_id` and an LLM configuration, so the avatar converses | required | ignored | `ask.html` |
+| `read` | `FULL` with **no** `context_id` and **no** `llm_configuration_id` | ignored | required, 1500 characters at most | `read.html` |
 
 `read` exists because the Read page never asks the avatar anything: it calls the SDK's `repeat()`,
-which speaks text verbatim, so a session carrying a context and an LLM would pay for machinery it
-never uses. A `read` request with a missing, non-string, or over-length `script` is a 400.
+which speaks text verbatim. A `read` request with a missing, non-string, or over-length `script` is
+a 400.
+
+### Why read mode is FULL without a context, and not LITE
+
+Omitting `context_id` from a FULL token is what HeyGen calls **restricted** mode: the avatar
+generates nothing on its own and speaks only what the page sends with `repeat()`, while the vendor
+voice still does the speaking. That is exactly what this page wants.
+
+**LITE cannot do this job.** It was tried first and produced an avatar that appeared and then said
+nothing. The reasons, from the LiveAvatar transport spike in the SeniorMinder repo
+(`spike/lite-transport`, commits `1c3a3643` and `18445c98`):
+
+- LITE validates only `avatar_id`. A bogus `voice_id` is accepted with a 200, so the voice on a
+  LITE token is not actually being applied.
+- A LITE session carries **no vendor text-to-speech**. The client is expected to supply its own
+  audio as PCM. There is no voice on the far end for `repeat()` to use.
+- `avatar.speak_text`, which is what `repeat()` sends, therefore produced no speech and no events
+  on a LITE session.
+
+**Cost.** FULL bills 2 credits per minute of open session, speaking or idle, against the
+prepaid HeyGen balance. LITE would have been cheaper, but it cannot speak. A read session is
+stopped by the page as soon as the last line is spoken, and `maxSessionDurationSeconds` (180) caps
+a session that is not, so the worst case is 6 credits per read.
 
 Both modes answer `{ "session_id": "...", "session_token": "..." }`.
 

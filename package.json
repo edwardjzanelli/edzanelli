@@ -7,7 +7,7 @@
     "build:site": "node build/build.mjs",
     "build:sdk": "esbuild build/sdk-entry.js --bundle --format=esm --platform=browser --minify --outfile=website/js/vendor/liveavatar.esm.js",
     "build": "npm run build:site && npm run build:sdk",
-    "test": "node --test lambda/session-token/test",
+    "test": "node --test lambda/session-token/test test",
     "serve": "npx --yes serve website -l 8080"
   },
   "devDependencies": {

@@ -1,8 +1,14 @@
 // Token Lambda for the Ask and Read pages. Spec v1.2 sections 7 and 8.
 // POST { mode?, avatar, language, llm?, speed?, script? } -> { session_id, session_token }
-//   mode:   "ask" (the default) mints a FULL session: context, LLM, microphone, conversation.
-//           "read" mints a LITE session: no context and no LLM, because the page only calls
-//           repeat() to speak the visitor's script. llm is ignored and not required.
+//   mode:   "ask" (the default) mints a FULL session carrying the context and an LLM configuration:
+//           the avatar listens and answers.
+//           "read" mints a FULL session with NO context_id and NO llm_configuration_id. Omitting
+//           the context is HeyGen's restricted mode: the avatar generates nothing of its own and
+//           speaks only what the page sends with repeat(), while the vendor voice still does the
+//           speaking. llm is ignored and not required.
+//           LITE is deliberately NOT used. It validates only avatar_id and ignores voice_id, and a
+//           LITE session carries no vendor text-to-speech at all: the client is expected to supply
+//           its own PCM. repeat() on a LITE session produced no speech and no events.
 //   speed:  speaking speed 0.80 to 1.20 in steps of 0.05; defaults to config voiceSpeed, then 1.
 //   script: read mode only, required there. The text the avatar will read; 1500 characters at most.
 //
@@ -154,10 +160,11 @@ export const handler = async (event) => {
     }
   }
 
-  // LITE carries the avatar and the voice and nothing else: no context, no LLM configuration.
-  // FULL adds the context the avatar answers from and the LLM that writes the answers.
+  // Both modes are FULL, because only FULL carries the vendor voice. Read leaves out the context
+  // and the LLM, which is what stops the avatar answering on its own; it then speaks nothing
+  // except what the page hands it through repeat().
   const body = {
-    mode: mode === "read" ? "LITE" : "FULL",
+    mode: "FULL",
     avatar_id: avatar.avatar_id,
     avatar_persona: {
       voice_id: voiceId,
@@ -207,6 +214,6 @@ export const handler = async (event) => {
     return json(502, { error: "unexpected response from avatar service" });
   }
 
-  console.log(`minted session ${payload.session_id} mode=${body.mode} avatar=${req.avatar} lang=${req.language} llm=${mode === "read" ? "-" : req.llm} sandbox=${body.is_sandbox}`);
+  console.log(`minted session ${payload.session_id} mode=${mode} token=${body.mode}${mode === "read" ? " (no context)" : ""} avatar=${req.avatar} lang=${req.language} llm=${mode === "read" ? "-" : req.llm} sandbox=${body.is_sandbox}`);
   return json(200, { session_id: payload.session_id, session_token: payload.session_token });
 };

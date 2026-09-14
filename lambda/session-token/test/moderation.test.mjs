@@ -65,9 +65,17 @@ test("an allowed script is minted, and the script went out under the policy file
     { role: "user", content: script },
   ]);
 
-  // And only then was a token minted, in LITE mode.
+  // And only then was a token minted: FULL, because only FULL carries the vendor voice, but
+  // stripped of the context and the LLM so the avatar can say nothing of its own.
   assert.equal(calls.token.length, 1);
-  assert.equal(calls.token[0].mode, "LITE");
+  const token = calls.token[0];
+  assert.equal(token.mode, "FULL");
+  assert.equal(token.avatar_persona.context_id, undefined);
+  assert.equal(token.llm_configuration_id, undefined);
+  // The voice still has to be there: it is what does the speaking.
+  assert.ok(token.avatar_persona.voice_id);
+  assert.equal(token.avatar_persona.language, "en");
+  assert.equal(token.avatar_persona.voice_settings.speed, 1);
 });
 
 test("policy item 2, the c-word: refused, and nothing is minted", async () => {
@@ -159,7 +167,13 @@ test("ask mode is not moderated", async () => {
 
   assert.equal(res.statusCode, 200);
   assert.equal(calls.moderation.length, 0);
-  assert.equal(calls.token[0].mode, "FULL");
+
+  // Ask keeps the two things read mode drops. This is the whole difference between the shapes,
+  // and it is what stops a read session regaining an agent that could answer on its own.
+  const token = calls.token[0];
+  assert.equal(token.mode, "FULL");
+  assert.ok(token.avatar_persona.context_id, "ask must carry the context");
+  assert.ok(token.llm_configuration_id, "ask must carry the LLM configuration");
 });
 
 test("an over-length script is refused before any moderation call", async () => {

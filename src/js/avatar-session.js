@@ -214,6 +214,14 @@ export function createAvatarSession(options) {
     // Speak this text verbatim, no LLM in the path. The Read page.
     repeat: (text) => send("repeat", text),
 
+    // Cut off whatever the avatar is saying now. The SDK throws if the session is not connected,
+    // so this is a no-op unless there is something to interrupt.
+    interrupt() {
+      if (!session) return false;
+      try { session.interrupt(); return true; }
+      catch (err) { console.warn("interrupt failed", err); return false; }
+    },
+
     isLive: () => session !== null,
     isBusy: () => busy,
     isSpeaking: () => speaking,
