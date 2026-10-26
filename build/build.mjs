@@ -3,6 +3,12 @@
 //   src/layout.html         the HTML shell shared by every page
 //   src/partials/*.html     header variants, footer, and repeated fragments
 //   src/pages/*.html        one file per page: a JSON metadata comment, then the page's <main>
+//                           The page's "path" is its URL and decides where it is written: "" is index.html,
+//                           "name.html" is written as is, and an extensionless "dir/name" is written as
+//                           dir/name/index.html so it is served at /dir/name. Pages are written from the
+//                           site root's point of view; in a page written below the root, every relative
+//                           href and src is prefixed with one "../" per level, so the same partials work
+//                           at any depth, from a server or from file://.
 //   src/css, src/js, src/assets  copied through unchanged
 //
 // Output goes to website/, which Amplify serves. website/ is build output and is not committed.
@@ -36,6 +42,8 @@ function expand(text, meta) {
     .replace(/\{\{current:([\w-]+)\}\}/g, (_, name) => (meta.current === name ? ' aria-current="page"' : ""));
 }
 
+const outFile = (path) => (path === "" ? "index.html" : path.endsWith(".html") ? path : `${path}/index.html`);
+
 function render(pageFile) {
   const raw = read(join(src, "pages", pageFile));
   const m = raw.match(/^<!-- meta\n([\s\S]*?)\n-->\n/);
@@ -66,8 +74,16 @@ function render(pageFile) {
     if (!(key in meta)) throw new Error(`${pageFile}: no value for {{${key}}}`);
     return meta[key];
   });
-  return html;
+
+  const file = outFile(meta.path);
+  const up = "../".repeat(file.split("/").length - 1);
+  if (up) html = html.replace(/\b(href|src)="(?![a-z][a-z0-9+.-]*:|\/|#)/gi, `$1="${up}`);
+  return { file, html };
 }
+
+const pages = readdirSync(join(src, "pages")).filter((f) => f.endsWith(".html"));
+const built = pages.map(render);
+const builtFiles = new Set(built.map((b) => b.file));
 
 // website/ is build output and is cleared on every run. Before clearing it, refuse if it holds
 // anything the build did not put there (a file that has no counterpart under src/), so nothing
@@ -78,7 +94,7 @@ function strays(dir, rel = "") {
     const path = join(rel, entry.name);
     const posix = path.split("\\").join("/"); // Windows paths use backslashes
     if (entry.isDirectory()) { if (posix !== "js/vendor") found.push(...strays(dir, path)); continue; }
-    const isPage = !rel && entry.name.endsWith(".html") && existsSync(join(src, "pages", entry.name));
+    const isPage = builtFiles.has(posix);
     if (!isPage && !existsSync(join(src, path))) found.push(posix);
   }
   return found;
@@ -100,6 +116,8 @@ mkdirSync(out, { recursive: true });
 for (const dir of ["css", "js", "assets"]) {
   if (existsSync(join(src, dir))) cpSync(join(src, dir), join(out, dir), { recursive: true });
 }
-const pages = readdirSync(join(src, "pages")).filter((f) => f.endsWith(".html"));
-for (const page of pages) writeFileSync(join(out, page), render(page));
-console.log(`built ${pages.length} pages -> website/`);
+for (const { file, html } of built) {
+  mkdirSync(dirname(join(out, file)), { recursive: true });
+  writeFileSync(join(out, file), html);
+}
+console.log(`built ${built.length} pages -> website/`);
