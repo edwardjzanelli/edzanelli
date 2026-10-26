@@ -18,7 +18,7 @@
 //                        (title, description, path). og_title and og_description fall back to title and
 //                        description; og_image falls back to assets/og-image.jpg.
 //   {{header}}           the partial named by the page's "header" field
-//   {{footer}}           partials/footer.html
+//   {{footer}}           the partial named by the page's "footer" field; partials/footer.html when it has none
 //   {{content}}          the page body
 //   {{scripts}}          <script> tags for "scripts" and "module_scripts"
 //   {{partial:name}}     inline partials/name.html (usable inside pages and partials)
@@ -55,6 +55,7 @@ function render(pageFile) {
     og_description: page.description,
     og_image: "assets/og-image.jpg",
     current: "",
+    footer: "footer",
     ...page,
   };
   const content = raw.slice(m[0].length).trimEnd();
@@ -67,7 +68,7 @@ function render(pageFile) {
   let html = read(join(src, "layout.html"))
     .replace("{{header}}", expand(partial(meta.header), meta))
     .replace("{{content}}", expand(content, meta))
-    .replace("{{footer}}", expand(partial("footer"), meta))
+    .replace("{{footer}}", expand(partial(meta.footer), meta))
     .replace("{{scripts}}", scripts);
 
   html = html.replace(/\{\{(\w+)\}\}/g, (_, key) => {
