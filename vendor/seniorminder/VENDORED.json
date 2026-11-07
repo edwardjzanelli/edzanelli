@@ -1,7 +1,7 @@
 {
   "source": "SeniorMinder",
-  "commit": "f4d29b75806a4170698f5d79906d29cbf2a07eb7",
-  "date": "2026-11-07T08:15:28.341Z",
+  "commit": "867dbe84e94e5bc573add1bb47de470160f2b7da",
+  "date": "2026-11-07T17:07:45.995Z",
   "syncedBy": "scripts/sync-seniorminder-voice.mjs",
   "note": "Generated. Do not edit anything under vendor/seniorminder by hand; run the sync script again.",
   "benchNeeds": [
@@ -95,7 +95,7 @@
     },
     {
       "path": "packages/voice/src/SentimentAnalyzer.js",
-      "sha256": "e4861ae098cd6c7b8d9a1053830933fe4aa1b75f79483811183a3b8c5fc71b69"
+      "sha256": "d5d1486a4b616dae36b029300d938551b2c067a9b853c08cee1838a5b7871b59"
     },
     {
       "path": "packages/voice/src/SpeechTranscriber.js",

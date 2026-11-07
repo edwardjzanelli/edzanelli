@@ -5,7 +5,7 @@
   "min_words": 4,
   "placeholder": "{{transcript}}",
   "source": {
-    "commit": "f4d29b75806a4170698f5d79906d29cbf2a07eb7",
+    "commit": "867dbe84e94e5bc573add1bb47de470160f2b7da",
     "prompt_and_max_tokens_and_min_words": "packages/voice/src/SentimentAnalyzer.js",
     "model": "packages/orchestrator/src/scheduler/SchedulerInit.js"
   }
