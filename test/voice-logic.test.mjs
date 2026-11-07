@@ -185,6 +185,14 @@ test("results: jitter and shimmer say connected speech reads higher than the cli
   }
 });
 
+test("copy: the page invites reading or talking, with no text-mode switch", () => {
+  const html = readFileSync(new URL("../src/pages/voice.html", import.meta.url), "utf8");
+  assert.ok(html.includes(">Read this aloud, or just talk about anything you like. You can go off script whenever you want.</label>"));
+  for (const gone of ["free-speech", "Text to read", "just talk about anything</label>"]) assert.ok(!html.includes(gone), gone);
+  const js = readFileSync(new URL("../src/js/voice.js", import.meta.url), "utf8");
+  assert.ok(!/freeSpeech|textMode/.test(js));
+});
+
 test("copy: no em dashes in the Voice page or its strings", () => {
   for (const file of ["../src/pages/voice.html", "../src/js/voice.js", "../src/js/voice-logic.js"]) {
     assert.ok(!readFileSync(new URL(file, import.meta.url), "utf8").includes("—"), file);
@@ -230,13 +238,12 @@ test("download: names are measureVoice's, units say what the number is, floored 
   assert.deepEqual(file.evidence, m.evidence);
 });
 
-test("download: measuredAt, source, textMode and the file name", () => {
+test("download: measuredAt, source and the file name, and no text mode", () => {
   const file = fileFor(measurement());
   assert.match(file.measuredAt, /^2026-11-06T09:05:07[+-]\d\d:\d\d$/);
   assert.equal(new Date(file.measuredAt).getTime(), AT.getTime(), "the offset makes it the same instant");
   assert.deepEqual(file.source, { name: "SeniorMinder voice-health", commit: COMMIT });
-  assert.equal(file.textMode, "suggested passage");
-  assert.equal(fileFor(measurement(), { freeSpeech: true }).textMode, "free speech");
+  assert.deepEqual(Object.keys(file), ["measuredAt", "source", "metrics", "floored", "evidence", "sentiment"]);
   assert.equal(fileName(AT), "voice-metrics-2026-11-06-0905.json");
   assert.equal(localIso(new Date(2026, 0, 2, 23, 59, 0)).slice(0, 19), "2026-01-02T23:59:00");
 });
@@ -248,20 +255,19 @@ const SCORES = { polarity_score: -0.4, subjectivity_score: 0.7, magnitude: 0.5, 
 test("sentiment: scored shows polarity, subjectivity and magnitude as values and the emotion as a label", () => {
   const s = sentimentFromResponse(true, SCORES);
   assert.deepEqual(s, { state: "scored", scores: SCORES, truncated: false });
-  const cards = sentimentCards(s, { freeSpeech: true });
+  const cards = sentimentCards(s);
   assert.deepEqual(cards.map((c) => c.title), ["Polarity", "Subjectivity", "Magnitude", "Dominant emotion"]);
   assert.ok(cards.every((c) => c.group === "Sentiment" && c.state === "value"));
   assert.deepEqual(cards.map((c) => c.value), ["-0.40", "0.70", "0.50", "sadness"]);
   assert.equal(cards[3].unit, null);
   for (const c of cards) for (const k of ["definition", "why", "moves"]) assert.ok(c[k].length > 20, `${c.title} ${k}`);
-  assert.ok(cards.every((c) => c.note === undefined), "no passage line in free speech");
 });
 
-test("sentiment: in suggested-passage mode each card says it scored the words you read", () => {
-  const cards = sentimentCards(sentimentFromResponse(true, SCORES), { freeSpeech: false });
-  assert.ok(cards.every((c) => c.note === "Scored on the words you read."));
-  const long = sentimentCards(sentimentFromResponse(true, SCORES, { truncated: true }), { freeSpeech: false });
-  assert.ok(long.every((c) => c.note === "Scored on the words you read. Scored on the first 2,000 characters of what the page heard."));
+test("sentiment: every scored card says it scored the words you spoke, including any you read", () => {
+  const cards = sentimentCards(sentimentFromResponse(true, SCORES));
+  assert.ok(cards.every((c) => c.note === "Scored on the words you spoke, including any you read."));
+  const long = sentimentCards(sentimentFromResponse(true, SCORES, { truncated: true }));
+  assert.ok(long.every((c) => c.note === "Scored on the words you spoke, including any you read. Scored on the first 2,000 characters of what the page heard."));
 });
 
 test("sentiment: off says so, and that ticking scores this recording without recording again", () => {
@@ -293,7 +299,7 @@ test("sentiment: a failed Lambda, an unreadable answer or a network error says s
     assert.equal(card.value, "Not available");
     assert.match(card.detail, /couldn't get a sentiment score/);
   }
-  const partial = sentimentCards(sentimentFromResponse(true, { polarity_score: 0.9, dominant_emotion: "joy" }), { freeSpeech: true });
+  const partial = sentimentCards(sentimentFromResponse(true, { polarity_score: 0.9, dominant_emotion: "joy" }));
   assert.deepEqual(partial.map((c) => c.state), ["value", "needs", "needs", "value"], "a field the model left out says so");
 });
 

@@ -270,8 +270,7 @@ figcaption { font-size: 0.9rem; color: var(--ink-light); text-align: center; mar
    Voice: the passage, the recorder and its meter, the result cards
    ------------------------------------------------------------ */
 .note.limits.privacy { margin: 0 auto 1.75rem; }
-.voice-text-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 1rem; margin-bottom: 0.5rem; }
-.voice-text-head label { font-size: 0.85rem; font-weight: 400; color: var(--ink); letter-spacing: 0.01em; }
+.voice-invite { display: block; margin-bottom: 0.6rem; color: var(--ink); }
 .aside { font-size: 0.9rem; color: var(--ink-light); font-style: italic; }
 .note.voice-source { text-align: left; margin-top: 0.4rem; }
 .voice-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem 1.25rem; margin: 1.1rem 0 0.9rem; }
@@ -307,8 +306,6 @@ details.note.limits { margin-top: 1.75rem; }
 details.note.limits summary { cursor: pointer; color: var(--ink); font-weight: 400; }
 details.note.limits p { margin-top: 0.5rem; }
 .read-go.voice-again { justify-content: center; flex-wrap: wrap; gap: 0.75rem; margin-top: 1.75rem; margin-bottom: 0.5rem; }
-.free-speech { display: inline-flex; align-items: center; gap: 0.4rem; cursor: pointer; }
-.free-speech input { accent-color: var(--teal); }
 .sentiment-consent { display: flex; align-items: flex-start; gap: 0.6rem; margin-top: 0.9rem; cursor: pointer; color: var(--ink); }
 .sentiment-consent input { accent-color: var(--teal); margin-top: 0.3rem; flex: none; }
 #sentiment-cards { margin-top: 0.5rem; }

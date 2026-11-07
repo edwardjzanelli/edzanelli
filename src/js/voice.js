@@ -51,7 +51,6 @@ const el = {
   heardText: document.getElementById("heard-text"),
   again: document.getElementById("again"),
   download: document.getElementById("download"),
-  freeSpeech: document.getElementById("free-speech"),
   consent: document.getElementById("sentiment-consent"),
   sentimentCards: document.getElementById("sentiment-cards"),
 };
@@ -141,7 +140,7 @@ async function stop() {
   const { stream, ctx, node, chunks, frames, rate } = rec;
   rec = null;
   busy = true;
-  const taken = { measuredAt: new Date(), freeSpeech: el.freeSpeech.checked };
+  const taken = { measuredAt: new Date() };
   node.port.onmessage = null;
   stream.getTracks().forEach((t) => t.stop());
   ctx.close();
@@ -304,7 +303,7 @@ function showResults(result, transcript, taken) {
 
 function showSentiment(sentiment) {
   shown.sentiment = sentiment;
-  renderCards(el.sentimentCards, sentimentCards(sentiment, { freeSpeech: shown.taken.freeSpeech }));
+  renderCards(el.sentimentCards, sentimentCards(sentiment));
 }
 
 /* Brings the Sentiment card in line with the box: unticked, it is off and any score is dropped; ticked, the

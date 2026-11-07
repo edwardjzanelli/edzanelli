@@ -298,7 +298,7 @@ export const fileName = (date) =>
    reading carries measureVoice's own number (unrounded, in the unit measureVoice gives it), and every other card,
    floored or not measured, is null. Metric names are measureVoice's, as in its floored list. floored and evidence
    are passed through as measureVoice returned them. */
-export function resultsFile(result, { wordsAvailable = true, commit, freeSpeech = false, measuredAt, sentiment = null }) {
+export function resultsFile(result, { wordsAvailable = true, commit, measuredAt, sentiment = null }) {
   const cards = resultCards(result, { wordsAvailable });
   const metrics = {};
   for (const m of METRICS) {
@@ -309,7 +309,6 @@ export function resultsFile(result, { wordsAvailable = true, commit, freeSpeech 
   return {
     measuredAt: localIso(measuredAt),
     source: { name: "SeniorMinder voice-health", commit },
-    textMode: freeSpeech ? "free speech" : "suggested passage",
     metrics,
     floored: result.floored,
     evidence: result.evidence,
@@ -389,10 +388,9 @@ const SENTIMENT_WAITING = {
 
 /* The Sentiment group's cards for one state. Scored: one card per field, each with the line that says what was
    scored. Otherwise: one card that says plainly why there is no score. */
-export function sentimentCards(sentiment, { freeSpeech = false } = {}) {
+export function sentimentCards(sentiment) {
   if (sentiment.state === "scored") {
-    const lines = [];
-    if (!freeSpeech) lines.push("Scored on the words you read.");
+    const lines = ["Scored on the words you spoke, including any you read."];
     if (sentiment.truncated) lines.push(`Scored on the first ${SENTIMENT_MAX_CHARS.toLocaleString("en-US")} characters of what the page heard.`);
     return SENTIMENT_METRICS.map((m) => {
       const v = sentiment.scores[m.key];
