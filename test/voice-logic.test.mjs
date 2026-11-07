@@ -13,6 +13,7 @@ import {
   QUIET_SECONDS,
   createMeter,
   countdown,
+  createFlow,
   fileName,
   localIso,
   resampleTo16k,
@@ -331,4 +332,74 @@ test("copy: each reference marker links to its entry, and each entry links out i
   }
   const why = html.slice(html.indexOf('<section class="voice-why">'));
   assert.ok(why.indexOf("That is why SeniorMinder compares") < why.indexOf("This page measures once"), "the new copy comes before the measures-once line");
+});
+
+// ---------- the Start button ----------
+
+/* Walks a flow the way voice.js does, from a press of Start to the cards on show. */
+function recordToResults(flow, measurement = { result: "r1", sentiment: { state: "off" } }) {
+  assert.equal(flow.press(), flow.stage === "results" ? "restart" : "start");
+  flow.to("opening");
+  flow.to("recording");
+  assert.equal(flow.press(), "stop");
+  for (const busy of ["stopping", "whisper", "measuring"]) flow.to(busy);
+  flow.show(measurement);
+  return flow;
+}
+
+test("start button: on once the cards show, off while stopping, in Whisper and while measuring", () => {
+  const flow = createFlow();
+  assert.ok(flow.startEnabled());
+  assert.equal(flow.startLabel(), "Start");
+  assert.equal(flow.press(), "start");
+  flow.to("opening");
+  assert.ok(!flow.startEnabled(), "opening the microphone");
+  assert.equal(flow.press(), "ignore");
+  flow.to("recording");
+  assert.ok(flow.startEnabled());
+  assert.equal(flow.startLabel(), "Stop");
+  assert.equal(flow.press(), "stop");
+  for (const busy of ["stopping", "whisper", "measuring"]) {
+    flow.to(busy);
+    assert.ok(!flow.startEnabled(), busy);
+    assert.equal(flow.startLabel(), "Start", busy);
+    assert.equal(flow.press(), "ignore", `a press while ${busy} does nothing`);
+    assert.equal(flow.stage, busy);
+  }
+  flow.show({ result: "r1", sentiment: { state: "pending" } });
+  assert.equal(flow.stage, "results");
+  assert.ok(flow.startEnabled(), "on as soon as the cards show, with sentiment still pending");
+  assert.equal(flow.startLabel(), "Start");
+});
+
+test("start button: pressing Start on the results leaves the same state as Measure again", () => {
+  const viaAgain = recordToResults(createFlow());
+  const viaStart = recordToResults(createFlow());
+  assert.deepEqual(viaStart.snapshot(), viaAgain.snapshot(), "the same before");
+  viaAgain.clear();
+  assert.equal(viaStart.press(), "restart");
+  assert.deepEqual(viaStart.snapshot(), viaAgain.snapshot());
+  assert.deepEqual(viaStart.snapshot().shown, null, "the previous result is discarded");
+  assert.equal(viaStart.stage, "idle");
+  assert.equal(viaStart.press(), "start", "then it records, as Start does after Measure again");
+});
+
+test("start button: a late sentiment reply from the previous recording is dropped", () => {
+  const flow = recordToResults(createFlow(), { result: "old", sentiment: { state: "pending" } });
+  const old = flow.ticket();   // the old recording's sentiment request, still out
+  assert.ok(flow.isCurrent(old));
+  assert.equal(flow.press(), "restart");
+  assert.ok(!flow.isCurrent(old), "dropped the moment Start discards the result");
+  flow.to("opening");
+  flow.to("recording");
+  assert.ok(!flow.isCurrent(old), "while the new one records");
+  for (const busy of ["stopping", "whisper", "measuring"]) flow.to(busy);
+  flow.show({ result: "new", sentiment: { state: "pending" } });
+  const fresh = flow.ticket();
+  assert.ok(!flow.isCurrent(old), "and once the new result is on show");
+  assert.ok(flow.isCurrent(fresh), "the new recording's own reply still lands");
+  // voice.js applies a reply only through this check.
+  const js = readFileSync(new URL("../src/js/voice.js", import.meta.url), "utf8");
+  assert.match(js, /const mine = flow\.ticket\(\);[\s\S]*if \(flow\.isCurrent\(mine\)\) showSentiment\(sentiment\);/);
+  assert.ok(!/\bbusy\b|\bgeneration\b/.test(js), "no second copy of the state outside the flow");
 });

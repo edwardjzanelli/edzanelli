@@ -15,6 +15,7 @@
 import {
   MAX_SECONDS,
   countdown,
+  createFlow,
   createMeter,
   fileName,
   levelFraction,
@@ -55,9 +56,15 @@ const el = {
   sentimentCards: document.getElementById("sentiment-cards"),
 };
 
-// The measurement on show, kept for the download and for scoring sentiment after the fact; Measure again drops it.
-let shown = null;        // { result, transcript, taken, sentiment }
-let generation = 0;      // bumped by every new result and by Measure again, so a late sentiment answer is dropped
+/* Where the page is, which decides what Start does, and the measurement on show (flow.shown: { result, transcript,
+   taken, sentiment }), kept for the download and for scoring sentiment after the fact. Measure again, and Start once
+   the cards are up, drop it; either bumps the ticket a sentiment request carries, so a late reply is ignored. */
+const flow = createFlow();
+
+function syncStart() {
+  el.record.disabled = !flow.startEnabled();
+  el.record.textContent = flow.startLabel();
+}
 
 const mb = (bytes) => `${(bytes / 1e6).toFixed(0)} MB`;
 el.modelText.textContent = `Whisper is about ${mb(MODEL_BYTES + RUNTIME_BYTES)} the first time.`;
@@ -67,7 +74,6 @@ function setStatus(text) { el.status.textContent = text; }
 // ---------- recording ----------
 
 let rec = null;     // { stream, ctx, node, chunks, frames, rate, meter }
-let busy = false;   // between Stop and the results
 
 function micMessage(err) {
   if (err && (err.name === "NotAllowedError" || err.name === "SecurityError")) {
@@ -84,7 +90,8 @@ async function start() {
     setStatus("This browser cannot record from a microphone here, so there is nothing to measure.");
     return;
   }
-  el.record.disabled = true;
+  flow.to("opening");
+  syncStart();
   setStatus("Opening the microphone…");
   let stream;
   try {
@@ -93,7 +100,8 @@ async function start() {
     });
   } catch (err) {
     setStatus(micMessage(err));
-    el.record.disabled = false;
+    flow.to("idle");
+    syncStart();
     return;
   }
   try {
@@ -110,11 +118,12 @@ async function start() {
   } catch (err) {
     stream.getTracks().forEach((t) => t.stop());
     setStatus("The microphone opened, but this browser could not record from it.");
-    el.record.disabled = false;
+    flow.to("idle");
+    syncStart();
     return;
   }
-  el.record.textContent = "Stop";
-  el.record.disabled = false;
+  flow.to("recording");
+  syncStart();
   el.meter.hidden = false;
   el.countdown.textContent = countdown(MAX_SECONDS);
   setStatus("Recording. Read the passage, or talk about anything, then press Stop.");
@@ -139,13 +148,12 @@ async function stop() {
   if (!rec) return;
   const { stream, ctx, node, chunks, frames, rate } = rec;
   rec = null;
-  busy = true;
+  flow.to("stopping");
+  syncStart();
   const taken = { measuredAt: new Date() };
   node.port.onmessage = null;
   stream.getTracks().forEach((t) => t.stop());
   ctx.close();
-  el.record.textContent = "Start";
-  el.record.disabled = true;
   el.meter.hidden = true;
 
   const captured = new Float32Array(frames);
@@ -162,7 +170,9 @@ async function stop() {
     return;
   }
 
+  flow.to("whisper");
   const transcript = await words(pcm);
+  flow.to("measuring");
   setStatus("Measuring…");
   let result;
   try {
@@ -175,9 +185,9 @@ async function stop() {
 }
 
 function finish(message) {
-  busy = false;
+  flow.to("idle");
+  syncStart();
   setStatus(message);
-  el.record.disabled = false;
   el.countdown.textContent = countdown(MAX_SECONDS);
 }
 
@@ -287,13 +297,12 @@ function renderCards(container, cards) {
 }
 
 function showResults(result, transcript, taken) {
-  generation += 1;
-  shown = { result, transcript, taken, sentiment: { state: "off" } };
+  flow.show({ result, transcript, taken, sentiment: { state: "off" } });
   renderCards(el.cards, resultCards(result, { wordsAvailable: transcript !== null }));
   el.heard.hidden = transcript === null;
   el.heardText.textContent = transcript === "" ? "(no words)" : transcript || "";
   el.results.hidden = false;
-  busy = false;
+  syncStart();   // Start is back on now, even while sentiment is still pending
   setStatus("Done. Your reading is below.");
   el.results.scrollIntoView({ behavior: "smooth", block: "start" });
   updateSentiment();
@@ -302,21 +311,22 @@ function showResults(result, transcript, taken) {
 // ---------- sentiment ----------
 
 function showSentiment(sentiment) {
-  shown.sentiment = sentiment;
+  flow.shown.sentiment = sentiment;
   renderCards(el.sentimentCards, sentimentCards(sentiment));
 }
 
 /* Brings the Sentiment card in line with the box: unticked, it is off and any score is dropped; ticked, the
    current result's words are scored, without recording again. */
 async function updateSentiment() {
+  const shown = flow.shown;
   if (!shown) return;
-  if (!el.consent.checked) { generation += 1; showSentiment({ state: "off" }); return; }
+  if (!el.consent.checked) { flow.ticket(); showSentiment({ state: "off" }); return; }
   if (shown.sentiment.state === "scored" || shown.sentiment.state === "pending") return;
   if (shown.transcript === null) {
     showSentiment({ state: "failed", why: "Whisper could not hear any words in this recording, so there were none to score." });
     return;
   }
-  const mine = ++generation;
+  const mine = flow.ticket();
   showSentiment({ state: "pending" });
   const { text, truncated } = sentimentText(shown.transcript);
   let sentiment;
@@ -330,13 +340,13 @@ async function updateSentiment() {
   } catch {
     sentiment = sentimentFromResponse(false, null);
   }
-  if (mine === generation) showSentiment(sentiment);
+  if (flow.isCurrent(mine)) showSentiment(sentiment);   // never onto a newer result, or a new recording
 }
 
 /* Saves the results as a file from the browser itself: a Blob and a download link, nothing sent anywhere. */
 function saveResults() {
-  if (!shown) return;
-  const { result, transcript, taken, sentiment } = shown;
+  if (!flow.shown) return;
+  const { result, transcript, taken, sentiment } = flow.shown;
   const file = resultsFile(result, { wordsAvailable: transcript !== null, commit: el.results.dataset.commit, ...taken, sentiment });
   const url = URL.createObjectURL(new Blob([JSON.stringify(file, null, 2) + "\n"], { type: "application/json" }));
   const a = document.createElement("a");
@@ -348,24 +358,30 @@ function saveResults() {
   setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
-function measureAgain() {
-  shown = null;
-  generation += 1;
+// Takes the dropped result off the page; flow.clear() or a Start press has already dropped it from the flow.
+function clearResults() {
   el.cards.replaceChildren();
   el.sentimentCards.replaceChildren();
   el.heardText.textContent = "";
   el.results.hidden = true;
-  el.record.disabled = false;
   el.countdown.textContent = countdown(MAX_SECONDS);
+  syncStart();
   setStatus("");
+}
+
+function measureAgain() {
+  flow.clear();
+  clearResults();
   el.record.scrollIntoView({ behavior: "smooth", block: "center" });
 }
 
 el.record.addEventListener("click", () => {
-  if (busy) return;
-  if (rec) stop(); else start();
+  const action = flow.press();
+  if (action === "stop") stop();
+  else if (action === "start") start();
+  else if (action === "restart") { clearResults(); start(); }   // Measure again, then record
 });
 el.again.addEventListener("click", measureAgain);
 el.download.addEventListener("click", saveResults);
 el.consent.addEventListener("change", updateSentiment);
-el.record.disabled = false;
+syncStart();

@@ -418,3 +418,46 @@ export function sentimentCards(sentiment) {
     moves: "The words themselves; a passage you read is scored on its words, not on you.",
   }];
 }
+
+/* ---------- the Start button ---------- */
+
+/* Where the page is, and so what Start does. Stages, in order:
+     idle        nothing on show; Start records
+     opening     asking for the microphone; Start is off
+     recording   Start reads Stop and stops
+     stopping    the recording is being stopped and prepared; Start is off
+     whisper     Whisper is loading or running; Start is off
+     measuring   measureVoice is running; Start is off
+     results     the cards are on show; Start does what Measure again does, then records
+   generation is the ticket a sentiment request carries: anything that drops or replaces the result on show bumps it,
+   so a reply that comes back for an older result is ignored. */
+export function createFlow() {
+  let stage = "idle";
+  let shown = null;
+  let generation = 0;
+
+  const clear = () => { shown = null; generation += 1; stage = "idle"; };
+
+  return {
+    get stage() { return stage; },
+    get shown() { return shown; },
+    snapshot: () => ({ stage, shown, generation }),
+    startEnabled: () => stage === "idle" || stage === "recording" || stage === "results",
+    startLabel: () => (stage === "recording" ? "Stop" : "Start"),
+    to(next) { stage = next; },
+    show(measurement) { shown = measurement; generation += 1; stage = "results"; },
+    // Measure again.
+    clear,
+    /* What a press of Start does now: "start", "stop", "restart" (the result was dropped exactly as Measure again
+       drops it; then record) or "ignore" while the page is busy. */
+    press() {
+      if (stage === "idle") return "start";
+      if (stage === "recording") return "stop";
+      if (stage === "results") { clear(); return "restart"; }
+      return "ignore";
+    },
+    // A new sentiment request, or the box unticked: the ticket for whatever is asked next.
+    ticket: () => (generation += 1),
+    isCurrent: (t) => t === generation,
+  };
+}
