@@ -314,3 +314,15 @@ test("download: sentiment is the scores when scored and null otherwise", () => {
     assert.equal(fileFor(measurement(), { sentiment: s }).sentiment, null, JSON.stringify(s));
   }
 });
+
+test("copy: each reference marker links to its entry, and each entry links out in a new tab", () => {
+  const html = readFileSync(new URL("../src/pages/voice.html", import.meta.url), "utf8");
+  for (const n of [1, 2, 3]) {
+    assert.ok(html.includes(`<sup><a href="#voice-ref-${n}" id="voice-cite-${n}">[${n}]</a></sup>`), `marker ${n}`);
+    const entry = html.match(new RegExp(`<li id="voice-ref-${n}">(.*?)</li>`));
+    assert.ok(entry, `entry ${n}`);
+    assert.match(entry[1], /<a href="https:\/\/[^"]+" target="_blank" rel="noopener">Link<\/a>$/);
+  }
+  const why = html.slice(html.indexOf('<section class="voice-why">'));
+  assert.ok(why.indexOf("That is why SeniorMinder compares") < why.indexOf("This page measures once"), "the new copy comes before the measures-once line");
+});

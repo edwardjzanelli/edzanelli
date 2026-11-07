@@ -314,6 +314,12 @@ details.note.limits p { margin-top: 0.5rem; }
 #sentiment-cards { margin-top: 0.5rem; }
 .voice-why { max-width: var(--text-col); margin: 1rem auto 0; }
 .voice-why h2 { text-align: center; margin-bottom: 1.25rem; }
+.voice-why sup { line-height: 0; font-size: 0.7em; }
+.voice-why sup a { text-decoration: none; }
+.voice-refs-title { font-size: 1rem; margin: 1.75rem 0 0.5rem; }
+.voice-refs { font-size: 0.88rem; color: var(--ink-light); padding-left: 1.5rem; }
+.voice-refs li { margin-bottom: 0.4rem; }
+.voice-refs li:target { color: var(--ink); }
 
 /* ------------------------------------------------------------
    Prose pages (privacy)
