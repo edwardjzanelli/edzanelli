@@ -2,7 +2,7 @@
 
 Mints LiveAvatar session tokens for the two avatar pages. Spec v1.2 sections 7, 8, 10.
 
-Files: `index.mjs` (handler), `config.json` (allow-lists and IDs), `moderation-policy.txt` (the rules a read script is held to, read at cold start). All three must be in the deployment package. No dependencies; Node 20 has `fetch` built in.
+Files: `index.mjs` (handler), `config.json` (allow-lists and IDs), `moderation-policy.txt` (the rules a read script is held to, read at cold start), `sentiment-prompt.txt` and `sentiment-request.json` (SeniorMinder's sentiment prompt, model, max_tokens and word floor, written by `npm run sync:seniorminder-voice` and never edited by hand). All five must be in the deployment package. No dependencies; Node 20 has `fetch` built in.
 
 ## Request
 
@@ -71,7 +71,7 @@ itself never reaches the avatar.
 
 ## Deploy (AWS CLI, run from `lambda/session-token/`)
 ```
-zip -j session-token.zip index.mjs config.json moderation-policy.txt
+zip -j session-token.zip index.mjs config.json moderation-policy.txt sentiment-prompt.txt sentiment-request.json
 
 aws iam create-role --role-name askEdTokenRole \
   --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"lambda.amazonaws.com"},"Action":"sts:AssumeRole"}]}'
@@ -94,7 +94,7 @@ For local testing add `http://localhost:8080` to `ALLOWED_ORIGINS` on both the e
 
 ## Update
 ```
-zip -j session-token.zip index.mjs config.json moderation-policy.txt
+zip -j session-token.zip index.mjs config.json moderation-policy.txt sentiment-prompt.txt sentiment-request.json
 aws lambda update-function-code --function-name askEdSessionToken --zip-file fileb://session-token.zip
 ```
 Going live: `aws lambda update-function-configuration --function-name askEdSessionToken --environment "Variables={...,SANDBOX=0}"`.
@@ -127,9 +127,26 @@ says why, which is what the Read page's "what it won't read" note promises.
 never committed. Edit the policy in `moderation-policy.txt` and redeploy; it is read at cold start,
 so it is versioned with the code rather than typed into a console.
 
+## Sentiment (the Voice page)
+`{"action": "sentiment", "transcript": "<the words Whisper heard>"}` scores the words the way SeniorMinder's
+`SentimentAnalyzer` does: the same prompt (`sentiment-prompt.txt`, with the transcript in place of
+`{{transcript}}`), the same model and `max_tokens`, no temperature, the same under-4-words skip and the same
+JSON parsing. The browser never sends a prompt; it sends only the transcript, and only when the visitor ticks the
+box. Origins are checked as for every other request; no LiveAvatar key is needed and nothing is minted.
+
+- Over 2,000 characters, or not a string: `400`, OpenAI not called.
+- Fewer than 4 words: `200 {"skipped": "fewer than 4 words"}`, OpenAI not called.
+- Scored: `200 {"polarity_score", "subjectivity_score", "magnitude", "dominant_emotion"}`, each `null` if the
+  model left it out.
+- OpenAI failed, timed out after 8 s, or answered something that does not parse: `502 {"error": "sentiment unavailable"}`.
+
+The transcript is never logged or stored; the one log line is `sentiment chars=<n> outcome=<scored|skipped|failed (why)>`.
+One difference from SeniorMinder: SeniorMinder's `LLMService.generateCompletion` puts a local-time preamble in
+front of every prompt; the Lambda sends the analyzer's prompt alone, as the spec for this page asks.
+
 ## Test
-The Lambda's side of the moderation contract is covered by `test/moderation.test.mjs`, which mocks
-`fetch`. From the repository root:
+The Lambda's side of the moderation contract is covered by `test/moderation.test.mjs`, and the sentiment
+action by `test/sentiment.test.mjs` against the vendored `SentimentAnalyzer`; both mock `fetch`. From the repository root:
 ```
 npm test
 ```

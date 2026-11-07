@@ -1,5 +1,7 @@
-// Token Lambda for the Ask and Read pages. Spec v1.2 sections 7 and 8.
+// Token Lambda for the Ask and Read pages, and the Voice page's sentiment score. Spec v1.2 sections 7 and 8.
 // POST { mode?, avatar, language?, llm?, speed?, script? } -> { session_id, session_token }
+// POST { action: "sentiment", transcript } -> { polarity_score, subjectivity_score, magnitude, dominant_emotion }
+//   or { skipped } under the word floor. See scoreSentiment below. transcript: 2000 characters at most.
 //   mode:   "ask" (the default) mints a FULL session carrying the context and an LLM configuration:
 //           the avatar listens and answers.
 //           "read" mints a FULL session with NO context_id and NO llm_configuration_id. Omitting
@@ -24,7 +26,8 @@
 //
 // Environment:
 //   LIVEAVATAR_API_KEY   required. The only secret this function holds.
-//   OPENAI_API_KEY       required for read mode. Reviews the script against moderation-policy.txt.
+//   OPENAI_API_KEY       required for read mode, where it reviews the script against moderation-policy.txt,
+//                        and for the sentiment action.
 //   ALLOWED_ORIGINS      comma-separated, e.g. "https://edzanelli.com,http://localhost:8080"
 //   SANDBOX              "1" to mint sandbox sessions (no credits; stock avatars only), anything else for live.
 //   DEBUG                "1" to include LiveAvatar's status and message in a 502 response. Unset for launch.
@@ -97,6 +100,71 @@ async function moderate(script) {
   return { failed: true };
 }
 
+/* Sentiment for the Voice page: SeniorMinder's own scoring, so the page's numbers mean what SeniorMinder stores.
+   Nothing here is retyped from SeniorMinder. scripts/sync-seniorminder-voice.mjs writes sentiment-prompt.txt (the
+   prompt SeniorMinder's SentimentAnalyzer sends, with {{transcript}} where it puts the trimmed transcript) and
+   sentiment-request.json (the model, max_tokens and the fewest words it scores), both read out of the vendored
+   SentimentAnalyzer at the commit in vendor/seniorminder/VENDORED.json. The request has the shape SeniorMinder's
+   OpenAIProvider.generateCompletion sends: model, max_tokens and the prompt as the one user message, with no
+   temperature and no system message. The parse is the analyzer's own line: strip ```json fences, trim, JSON.parse.
+
+   The transcript is never logged: a log line carries its length and the outcome, nothing else. Nothing is stored. */
+const SENTIMENT_PROMPT = readFileSync(new URL("./sentiment-prompt.txt", import.meta.url), "utf8");
+const SENTIMENT_REQUEST = JSON.parse(readFileSync(new URL("./sentiment-request.json", import.meta.url), "utf8"));
+const SENTIMENT_URL = "https://api.openai.com/v1/chat/completions";
+const SENTIMENT_TIMEOUT_MS = 8000;   // SeniorMinder's LLM_FETCH_TIMEOUT_MS
+const SENTIMENT_MAX_CHARS = 2000;
+const SENTIMENT_FIELDS = ["polarity_score", "subjectivity_score", "magnitude", "dominant_emotion"];
+
+// The prompt for one transcript, as SentimentAnalyzer builds it. split/join, not replace, so a "$" in the
+// transcript is never read as a replacement pattern.
+export const sentimentPrompt = (transcript) => SENTIMENT_PROMPT.split(SENTIMENT_REQUEST.placeholder).join(transcript.trim());
+
+// SentimentAnalyzer's skip: no transcript, or fewer words than it scores.
+const tooFewWords = (transcript) => !transcript || transcript.trim().split(/\s+/).length < SENTIMENT_REQUEST.min_words;
+
+async function scoreSentiment(transcript) {
+  const chars = transcript.length;
+  const outcome = (what) => console.log(`sentiment chars=${chars} outcome=${what}`);
+  const failed = (why) => { outcome(`failed (${why})`); return json(502, { error: "sentiment unavailable" }); };
+
+  if (tooFewWords(transcript)) {
+    outcome("skipped");
+    return json(200, { skipped: `fewer than ${SENTIMENT_REQUEST.min_words} words` });
+  }
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) return failed("OPENAI_API_KEY not set");
+
+  let res, data;
+  try {
+    res = await fetch(SENTIMENT_URL, {
+      method: "POST",
+      headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        model: SENTIMENT_REQUEST.model,
+        max_tokens: SENTIMENT_REQUEST.max_tokens,
+        messages: [{ role: "user", content: sentimentPrompt(transcript) }],
+      }),
+      signal: AbortSignal.timeout(SENTIMENT_TIMEOUT_MS),
+    });
+    if (!res.ok) return failed(`OpenAI status ${res.status}`);
+    data = await res.json();
+  } catch (err) {
+    return failed(err.name === "TimeoutError" ? "timed out" : "request failed");
+  }
+
+  // SentimentAnalyzer: raw = the completion's content ('' when absent); a parse error is no result.
+  let parsed;
+  try {
+    const raw = data?.choices?.[0]?.message?.content || "";
+    parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
+  } catch {
+    return failed("unparseable model output");
+  }
+  outcome("scored");
+  return json(200, Object.fromEntries(SENTIMENT_FIELDS.map((f) => [f, parsed?.[f] ?? null])));
+}
+
 const json = (statusCode, body) => ({
   statusCode,
   headers: { "content-type": "application/json" },
@@ -111,15 +179,25 @@ export const handler = async (event) => {
   const allowed = (process.env.ALLOWED_ORIGINS || "").split(",").map((s) => s.trim()).filter(Boolean);
   if (!allowed.includes(origin)) return json(403, { error: "origin not allowed" });
 
-  const apiKey = process.env.LIVEAVATAR_API_KEY;
-  if (!apiKey) return json(500, { error: "server not configured" });
-
   let req;
   try {
     req = JSON.parse(event.isBase64Encoded ? Buffer.from(event.body, "base64").toString() : event.body || "{}");
   } catch {
     return json(400, { error: "body must be JSON" });
   }
+
+  // The Voice page's sentiment score. It needs no LiveAvatar key and mints nothing.
+  if (req.action === "sentiment") {
+    if (typeof req.transcript !== "string") return json(400, { error: "transcript is required" });
+    if (req.transcript.length > SENTIMENT_MAX_CHARS) {
+      return json(400, { error: `transcript must be ${SENTIMENT_MAX_CHARS} characters or fewer` });
+    }
+    return scoreSentiment(req.transcript);
+  }
+  if (req.action !== undefined) return json(400, { error: "unknown action" });
+
+  const apiKey = process.env.LIVEAVATAR_API_KEY;
+  if (!apiKey) return json(500, { error: "server not configured" });
 
   const mode = req.mode ?? "ask";
   if (mode !== "ask" && mode !== "read") return json(400, { error: "mode must be ask or read" });
