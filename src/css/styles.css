@@ -267,6 +267,55 @@ figcaption { font-size: 0.9rem; color: var(--ink-light); text-align: center; mar
 .ask-cta p { margin-bottom: 1rem; }
 
 /* ------------------------------------------------------------
+   Voice: the passage, the recorder and its meter, the result cards
+   ------------------------------------------------------------ */
+.note.limits.privacy { margin: 0 auto 1.75rem; }
+.voice-text-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 1rem; margin-bottom: 0.5rem; }
+.voice-text-head label { font-size: 0.85rem; font-weight: 400; color: var(--ink); letter-spacing: 0.01em; }
+.aside { font-size: 0.9rem; color: var(--ink-light); font-style: italic; }
+.note.voice-source { text-align: left; margin-top: 0.4rem; }
+.voice-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem 1.25rem; margin: 1.1rem 0 0.9rem; }
+.voice-controls .btn { min-width: 110px; }
+.countdown { font-family: var(--serif); font-size: 1.6rem; font-weight: 500; color: var(--navy); font-variant-numeric: tabular-nums; min-width: 3ch; }
+.meter { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 1.1rem; margin-bottom: 0.5rem; }
+.level { flex: 1 1 220px; height: 10px; border-radius: 5px; background: var(--paper); border: 1px solid var(--rule); overflow: hidden; }
+.level-fill { height: 100%; width: 0; background: linear-gradient(90deg, var(--teal-light), var(--teal-dark)); transition: width 0.06s linear; }
+.light { display: inline-flex; align-items: center; gap: 0.45rem; font-size: 0.9rem; font-weight: 400; color: var(--ink-light); }
+.light::before { content: ""; width: 12px; height: 12px; border-radius: 50%; background: var(--rule); transition: background 0.1s ease; }
+.light.on { color: var(--teal); }
+.light.on::before { background: var(--teal); box-shadow: 0 0 0 3px rgba(31, 111, 120, 0.15); }
+.warn { font-size: 0.9rem; font-weight: 400; color: var(--brass); }
+.model { margin: 0.75rem 0 0; }
+.model progress { width: 100%; height: 10px; accent-color: var(--teal); }
+.model .note { text-align: left; margin-top: 0.35rem; }
+.note.voice-whisper { text-align: left; margin-top: 0.5rem; }
+
+.voice-results { margin-top: 2.5rem; }
+.voice-results > h2 { text-align: center; margin-bottom: 0.5rem; }
+.voice-results > p { text-align: center; max-width: 36em; margin: 0 auto 1.5rem; }
+.metric-group { margin: 2rem 0 0.9rem; }
+.metric-grid { display: grid; grid-template-columns: 1fr; gap: 1.25rem; }
+.metric { padding: 1.5rem 1.6rem; }
+.metric h4 { font-family: var(--sans); font-size: 0.78rem; font-weight: 400; text-transform: uppercase; letter-spacing: 0.12em; color: var(--ink-light); margin-bottom: 0.35rem; }
+.metric p { font-size: 0.95rem; margin-bottom: 0.6rem; }
+.metric .metric-value { font-family: var(--serif); font-size: 2rem; font-weight: 500; color: var(--navy); line-height: 1.2; margin-bottom: 0.5rem; }
+.metric .metric-unit { font-family: var(--sans); font-size: 0.95rem; font-weight: 400; color: var(--ink-light); }
+.metric-needs .metric-value, .metric-unavailable .metric-value, .metric-off .metric-value { font-size: 1.45rem; color: var(--ink-light); }
+.metric .metric-need { color: var(--teal); font-weight: 400; }
+.metric .metric-note { font-size: 0.88rem; font-style: italic; }
+details.note.limits { margin-top: 1.75rem; }
+details.note.limits summary { cursor: pointer; color: var(--ink); font-weight: 400; }
+details.note.limits p { margin-top: 0.5rem; }
+.read-go.voice-again { justify-content: center; flex-wrap: wrap; gap: 0.75rem; margin-top: 1.75rem; margin-bottom: 0.5rem; }
+.free-speech { display: inline-flex; align-items: center; gap: 0.4rem; cursor: pointer; }
+.free-speech input { accent-color: var(--teal); }
+.sentiment-consent { display: flex; align-items: flex-start; gap: 0.6rem; margin-top: 0.9rem; cursor: pointer; color: var(--ink); }
+.sentiment-consent input { accent-color: var(--teal); margin-top: 0.3rem; flex: none; }
+#sentiment-cards { margin-top: 0.5rem; }
+.voice-why { max-width: var(--text-col); margin: 1rem auto 0; }
+.voice-why h2 { text-align: center; margin-bottom: 1.25rem; }
+
+/* ------------------------------------------------------------
    Prose pages (privacy)
    ------------------------------------------------------------ */
 .prose { padding: 3rem 0 4rem; }
@@ -293,6 +342,7 @@ figcaption { font-size: 0.9rem; color: var(--ink-light); text-align: center; mar
   .links { flex-direction: column; gap: 0.9rem; }
   .ask-controls label, .ask-controls select, .ask-controls .btn { width: 100%; }
   .read-go .btn { width: 100%; }
+  .voice-controls .btn { width: 100%; }
   .turn { grid-template-columns: 1fr; gap: 2px; }
   .card { padding: 1.5rem; }
 }
@@ -300,6 +350,7 @@ figcaption { font-size: 0.9rem; color: var(--ink-light); text-align: center; mar
 @media (min-width: 640px) {
   .proof { grid-template-columns: repeat(3, 1fr); }
   .grid-3 { grid-template-columns: repeat(3, 1fr); }
+  .metric-grid { grid-template-columns: repeat(2, 1fr); }
 }
 
 @media (min-width: 900px) {

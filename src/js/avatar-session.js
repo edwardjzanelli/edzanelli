@@ -13,7 +13,9 @@ import {
   SessionDisconnectReason,
 } from "./vendor/liveavatar.esm.js";
 
-export const TOKEN_URL = "https://bw7rxcyn7l47nrc2f3ors4bwzi0mqzhp.lambda-url.us-west-1.on.aws"; // Lambda function URL, see lambda/session-token/README.md
+import { TOKEN_URL } from "./token-url.js";
+
+export { TOKEN_URL };
 
 /* POSTs the page's request body to the token Lambda and returns the whole answer, not just the
    token: read mode also reports whether the script was refused and what the avatar should say

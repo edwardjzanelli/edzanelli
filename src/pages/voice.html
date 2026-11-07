@@ -1,0 +1,89 @@
+<!-- meta
+{
+  "path": "voice.html",
+  "title": "Voice | Measure your voice in your browser",
+  "description": "Read a short passage aloud and see what my voice-health code measures: rate and pauses, pitch, loudness and voice quality, on your own device.",
+  "og_title": "Voice",
+  "og_description": "Read a short passage aloud and see what my voice-health code measures, on your own device.",
+  "header": "header-site",
+  "current": "voice",
+  "scripts": ["js/site.js"],
+  "module_scripts": ["js/voice.js"]
+}
+-->
+<main class="ask-main">
+  <div class="wrap">
+
+    <h1>Voice</h1>
+    <p class="lead">Read a short passage aloud and I will show you what my voice-health code makes of your voice: rate and pauses, pitch, loudness and voice quality. It is the same code SeniorMinder runs.</p>
+
+    <div class="note limits privacy">
+      <h2>Your voice stays with you</h2>
+      <p>Your voice is measured on your own device. The recording is never uploaded, stored or kept, and closing the page discards it.</p>
+      <p>If you tick the box below, the words the page heard, and only the words, go to OpenAI to be scored for sentiment. I don’t store them; OpenAI handles them under its API data retention policy. Leave it unticked and nothing leaves your device.</p>
+      <label class="sentiment-consent"><input type="checkbox" id="sentiment-consent"> Also score the sentiment of my words. This sends only the words the page heard (never the recording) to OpenAI. I don’t store them.</label>
+    </div>
+
+    <div class="card accent-teal ask-card voice-card">
+      <div class="voice-text-head">
+        <label for="passage">Text to read</label>
+        <label class="aside free-speech"><input type="checkbox" id="free-speech"> or just talk about anything</label>
+      </div>
+      <div class="script-field">
+        <textarea id="passage" rows="8">It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of foolishness, it was the epoch of belief, it was the epoch of incredulity, it was the season of Light, it was the season of Darkness, it was the spring of hope, it was the winter of despair, we had everything before us, we had nothing before us, we were all going direct to Heaven, we were all going direct the other way; in short, the period was so far like the present period, that some of its noisiest authorities insisted on its being received, for good or for evil, in the superlative degree of comparison only.</textarea>
+      </div>
+      <p class="note voice-source">Charles Dickens, A Tale of Two Cities (public domain). You can edit it, or ignore it and talk.</p>
+
+      <div class="voice-controls">
+        <button class="btn btn-primary" id="record" type="button" disabled>Start</button>
+        <span class="countdown" id="countdown" aria-label="Time left">2:00</span>
+        <span class="aside">Up to two minutes; the recording stops itself at the end.</span>
+      </div>
+
+      <div class="meter" id="meter" hidden>
+        <div class="level" aria-hidden="true"><div class="level-fill" id="level-fill"></div></div>
+        <span class="light" id="speaking">Speaking</span>
+        <span class="warn" id="too-quiet" hidden>Too quiet: move closer or speak up</span>
+        <span class="warn" id="too-loud" hidden>Too loud: move back a little</span>
+      </div>
+
+      <div class="model" id="model" hidden>
+        <progress id="model-bar" max="1" value="0"></progress>
+        <p class="note" id="model-text"></p>
+      </div>
+
+      <p class="status" id="status" role="status" aria-live="polite"></p>
+      <p class="note voice-whisper">For the word rate, I run Whisper base.en, a speech recognition model, in your browser. It downloads after your first Stop, about 90 MB the first time; your browser keeps the model for next time, and nothing of your voice.</p>
+    </div>
+
+    <section class="voice-results" id="results" data-commit="{{seniorminder_voice_commit}}" hidden>
+      <h2>Your reading</h2>
+      <p>One recording, measured once. Where a reading needs more speech than this recording had, the card says how much, rather than showing a number it cannot stand behind.</p>
+      <div id="cards"></div>
+      <div id="sentiment-cards"></div>
+      <details class="note limits" id="heard" hidden>
+        <summary>The words Whisper heard</summary>
+        <p id="heard-text"></p>
+      </details>
+      <div class="read-go voice-again">
+        <button class="btn" id="download" type="button">Download your results</button>
+        <button class="btn" id="again" type="button">Measure again</button>
+      </div>
+      <p class="note">The download is a JSON file your browser saves to your device; saving it uploads nothing.</p>
+    </section>
+
+    <section class="voice-why">
+      <div class="divider"></div>
+      <h2>Why measure a voice over time</h2>
+      <p>A single reading says little. Voices differ from one person to the next, and from morning to evening in the same person, so one number on its own tells you very little about you.</p>
+      <p>Change against your own earlier readings says much more. What matters is how your voice compares with your own usual, not with an average of other people, which is why this page gives no norms and no verdicts.</p>
+      <p>Readings are only comparable when they are taken the same way: the same text, the same microphone, the same room and distance. That is why I suggest one passage, and why it is worth reading the same one each time.</p>
+      <p>This page measures once and I keep nothing. When you close it, the reading is gone.</p>
+      <p>SeniorMinder does this every day for the seniors it serves, quietly, from the answers they give at their check-ins, and follows each voice against its own baseline.</p>
+      <p>The readings describe a voice. They are not a medical test and they do not diagnose anything.</p>
+    </section>
+
+    <p class="disclosure">Measurement by SeniorMinder’s voice-health code, commit <span title="{{seniorminder_voice_commit}}">{{seniorminder_voice_commit_short}}</span>.</p>
+
+  </div>
+</main>
