@@ -1,0 +1,33 @@
+{
+  "name": "@seniorminder/common",
+  "version": "1.0.0",
+  "description": "Shared utilities for SeniorMinder packages",
+  "main": "src/index.js",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.js",
+    "./Env": "./src/Env.js",
+    "./Env.js": "./src/Env.js",
+    "./Environment": "./src/Environment.js",
+    "./Environment.js": "./src/Environment.js",
+    "./Paths": "./src/Paths.js",
+    "./Paths.js": "./src/Paths.js",
+    "./OutboundFailure": "./src/OutboundFailure.js",
+    "./OutboundFailure.js": "./src/OutboundFailure.js",
+    "./WavDecoder": "./src/WavDecoder.js",
+    "./WavDecoder.js": "./src/WavDecoder.js"
+  },
+  "keywords": [
+    "seniorminder",
+    "utilities",
+    "timezone"
+  ],
+  "author": "SeniorMinder",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "dotenv": "^16.5.0"
+  }
+}

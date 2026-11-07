@@ -1,0 +1,21 @@
+{
+  "name": "@seniorminder/device",
+  "version": "0.0.1",
+  "description": "Device management utilities for SeniorMinder",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./platform": "./src/platform/index.js"
+  },
+  "author": "SeniorMinder",
+  "license": "UNLICENSED",
+  "scripts": {
+    "build": "echo device: nothing to build (JS only)",
+    "clean": "echo device: clean"
+  },
+  "dependencies": {
+    "@seniorminder/core-utils": "file:../core-utils",
+    "@seniorminder/logger": "file:../logger"
+  }
+}

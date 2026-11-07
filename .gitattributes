@@ -1,0 +1,2 @@
+# vendor/seniorminder holds SeniorMinder files byte for byte, as stamped in its VENDORED.json.
+vendor/seniorminder/** -text

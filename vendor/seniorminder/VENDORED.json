@@ -1,0 +1,153 @@
+{
+  "source": "SeniorMinder",
+  "commit": "f4d29b75806a4170698f5d79906d29cbf2a07eb7",
+  "date": "2026-11-07T08:15:28.341Z",
+  "syncedBy": "scripts/sync-seniorminder-voice.mjs",
+  "note": "Generated. Do not edit anything under vendor/seniorminder by hand; run the sync script again.",
+  "benchNeeds": [
+    "fs-extra",
+    "@xenova/transformers"
+  ],
+  "files": [
+    {
+      "path": "packages/common/package.json",
+      "sha256": "cc3a6a5f94e4d9b4f95616a4bd13574e2a877addacf4d069f759355ca07eb563"
+    },
+    {
+      "path": "packages/common/src/EnvState.js",
+      "sha256": "21e7d36932902e98eb0cae0877ddcc81ff067f964909c620eacd96001488150d"
+    },
+    {
+      "path": "packages/common/src/Paths.js",
+      "sha256": "9c7c678da6344b26ff84132b47bfb58a386339863968775c82bd7ff629cbd277"
+    },
+    {
+      "path": "packages/common/src/WavDecoder.js",
+      "sha256": "c6a0a797d71fd57c1f34ea44d717fb3ec942ca12af85a0b371909e8effb2f20a"
+    },
+    {
+      "path": "packages/device/package.json",
+      "sha256": "64387e8904814f4bb17ed656d4ff1c640994012bbfdf6880fb3ee1464762d3fb"
+    },
+    {
+      "path": "packages/device/src/DeviceConfigManager.js",
+      "sha256": "1c02c528abb88eecff2bf01fae6fb20bd074a04d2c77079edfc1bb197870fd6e"
+    },
+    {
+      "path": "packages/device/src/WhisperModel.js",
+      "sha256": "826857dc3af780f15fa54b100a9149f669430ffc6a1c6ffc6f54446906c7d04d"
+    },
+    {
+      "path": "packages/device/src/index.js",
+      "sha256": "02f0683f658cbf02c586c1a5c35461fcbed7194a8848f20e2136b624698c75b2"
+    },
+    {
+      "path": "packages/logger/package.json",
+      "sha256": "899c139af1726bce19e0172760e0e0bc1f3b2b14a954264ff77b7d40724eb0df"
+    },
+    {
+      "path": "packages/logger/src/AppLogger.js",
+      "sha256": "df95810e648a4dae717d1700de2e2d9dc00508eae7021a7775ed8c98315055fc"
+    },
+    {
+      "path": "packages/logger/src/ChildIO.js",
+      "sha256": "97916cd5e1e29d7bc85b19d34bbac1fcea6cb3f912ed82e04613feaad2ab76b0"
+    },
+    {
+      "path": "packages/logger/src/LogManager.js",
+      "sha256": "131e2872591b584dfe9b67d3326ed6fb8de0896effb64f79f814789a475d77c6"
+    },
+    {
+      "path": "packages/logger/src/Logger.js",
+      "sha256": "ab6cd128b27248d08c084ab23db34dda211606f15882a4c8d94f01a867291db7"
+    },
+    {
+      "path": "packages/logger/src/index.js",
+      "sha256": "5562bad05bb3c89d25da43c34171b7b1b9bdb0721eabe1ebd7cbce3a825dd220"
+    },
+    {
+      "path": "packages/logger/src/utils/Constants.js",
+      "sha256": "8901d3ee0f791913e8faf9064b66d13697ef2bb19bd0d049e0bc64b37d333f2b"
+    },
+    {
+      "path": "packages/voice/package.json",
+      "sha256": "3ab7b36bed8060d9e3bffaec44fbd23037dcc5272d32b9e77cf0d09a0c95f3c9"
+    },
+    {
+      "path": "packages/voice/src/AudioProcessor.js",
+      "sha256": "28f20de5506b95dfde7f47e5e7d02d29d366607ad85e873ff90970cb584947ec"
+    },
+    {
+      "path": "packages/voice/src/EnhancedProcessingService.js",
+      "sha256": "af97fda2c1a476951c68c1556a1c6494601e5e7b2c78eacfd564d079f3e25d49"
+    },
+    {
+      "path": "packages/voice/src/LevelGate.js",
+      "sha256": "f243b790e2326df484c1f8add093991828e55ab558ed19f5da6f99b0464c00ea"
+    },
+    {
+      "path": "packages/voice/src/MetricsCalculator.js",
+      "sha256": "4000acd02e3357f70a298ed6d074f6f2cafe912b45649206ceaa97aca0b5fd14"
+    },
+    {
+      "path": "packages/voice/src/ReliabilityFloors.js",
+      "sha256": "3e4fdaa3630246bed21872a1fc7dc50635e82a381973a6676c687814750b6d04"
+    },
+    {
+      "path": "packages/voice/src/SentimentAnalyzer.js",
+      "sha256": "e4861ae098cd6c7b8d9a1053830933fe4aa1b75f79483811183a3b8c5fc71b69"
+    },
+    {
+      "path": "packages/voice/src/SpeechTranscriber.js",
+      "sha256": "681101017f13d9b7345100639c4824d01d86336b5671cdc95be2f0d6b8739e1f"
+    },
+    {
+      "path": "packages/voice/src/VoiceAnalyticsService.js",
+      "sha256": "710a624ef00c0b4f950f25e6dad8bede7ef53f1ec5a11aebebcb2a398f8784be"
+    },
+    {
+      "path": "packages/voice/src/WordCount.js",
+      "sha256": "eb0573632236ed752af20d71ca3582768a0b75baf5550d4c916170124fbe31b4"
+    },
+    {
+      "path": "packages/voice/src/utils/Constants.js",
+      "sha256": "1113aee70d8490ed61b7f0c64df9ac342bc3f3c2b3dac0c7b9f64645be0e67bd"
+    },
+    {
+      "path": "packages/voice/src/workers/WorkerPool.js",
+      "sha256": "fbe2d06386cfdfff088706132d871219a23a2af9dc938c75accef6a3540dca53"
+    },
+    {
+      "path": "packages/voice/test/test-voice-browser-parity.js",
+      "sha256": "5f01cf415fce09d0bbf95f268d2d4bac0b7ec0d04d4e12714913eb07572558e3"
+    },
+    {
+      "path": "scripts/build-voice-browser.mjs",
+      "sha256": "f2d23aaa5750d02e1cdefdb02e1ebe6b1637a25b9f34a5d847e29fe2428f7075"
+    },
+    {
+      "path": "scripts/voice-browser/entry.js",
+      "sha256": "3081e7a2cff13be7e2e646eaed7983396c1f586783e895d4beb1625c08d1ccda"
+    },
+    {
+      "path": "scripts/voice-browser/package-lock.json",
+      "sha256": "ac1e0911f61cd6add5a8e3fefe8636595adf8464f65222b9a8029a533e83cf72"
+    },
+    {
+      "path": "scripts/voice-browser/package.json",
+      "sha256": "76329ed00242c5baca65aa388bf2593c9770fba25472606318c8c5b5ca1a8f69"
+    },
+    {
+      "path": "scripts/voice-browser/stubs/logger.js",
+      "sha256": "4a6d6f0c73a2241dab44c9a2acd92e7c0154dd4bb472315b0a9fa41328d7e077"
+    },
+    {
+      "path": "scripts/voice-browser/stubs/spawn.js",
+      "sha256": "172fe2553e300cc2b8951202c4209481be457b1cc6752b0838e5bd43a37b6c35"
+    },
+    {
+      "path": "scripts/voice-browser/stubs/unavailable.js",
+      "sha256": "1f8fadb10c1dfdbb73a0ccbb8f1182b92db1396fa03ae62b24b17695b103d2b4"
+    }
+  ]
+}

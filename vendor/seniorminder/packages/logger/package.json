@@ -1,0 +1,19 @@
+{
+  "name": "@seniorminder/logger",
+  "version": "0.0.1",
+  "description": "Logging utilities for SeniorMinder",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "author": "SeniorMinder",
+  "license": "UNLICENSED",
+  "scripts": {
+    "build": "echo logger: nothing to build (JS only)",
+    "clean": "echo logger: clean"
+  },
+  "dependencies": {
+    "fs-extra": "^11.3.4"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "name": "seniorminder-voice-browser-build",
+  "private": true,
+  "description": "Build-only dependency of scripts/build-voice-browser.mjs, kept out of the workspace tree. Install: npm ci --prefix scripts/voice-browser",
+  "type": "module",
+  "devDependencies": {
+    "esbuild": "0.25.10"
+  }
+}
