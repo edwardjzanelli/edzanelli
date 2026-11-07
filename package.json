@@ -2,16 +2,21 @@
   "name": "edzanelli",
   "private": true,
   "version": "1.2.0",
-  "description": "edzanelli.com. Static site assembled from src/ by build/build.mjs; the only dependency is esbuild, which bundles the LiveAvatar SDK for the Ask page.",
+  "description": "edzanelli.com. Static site assembled from src/ by build/build.mjs. esbuild bundles the LiveAvatar SDK for the Ask page, and the vendored SeniorMinder voice-health code for the Voice page (vendor/seniorminder, with its own pinned esbuild).",
   "scripts": {
     "build:site": "node build/build.mjs",
     "build:sdk": "esbuild build/sdk-entry.js --bundle --format=esm --platform=browser --minify --outfile=website/js/vendor/liveavatar.esm.js",
-    "build": "npm run build:site && npm run build:sdk",
+    "build:voice": "npm ci --prefix vendor/seniorminder/scripts/voice-browser --no-audit --no-fund && node scripts/build-voice.mjs",
+    "build": "npm run build:site && npm run build:sdk && npm run build:voice",
     "test": "node --test lambda/session-token/test test",
+    "test:voice-parity": "node scripts/run-voice-parity.mjs",
+    "sync:seniorminder-voice": "node scripts/sync-seniorminder-voice.mjs",
     "serve": "npx --yes serve website -l 8080"
   },
   "devDependencies": {
     "@heygen/liveavatar-web-sdk": "0.0.18",
-    "esbuild": "^0.24.0"
+    "esbuild": "^0.24.0",
+    "fs-extra": "11.3.6",
+    "node-web-audio-api": "2.2.0"
   }
 }

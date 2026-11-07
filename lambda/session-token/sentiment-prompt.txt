@@ -1,0 +1,4 @@
+Analyze the sentiment of this patient statement. Respond ONLY with valid JSON, no markdown, no explanation:
+{"polarity_score": <number -1.0 to 1.0>, "subjectivity_score": <number 0.0 to 1.0>, "magnitude": <number 0.0 to 1.0>, "dominant_emotion": <"joy"|"sadness"|"anger"|"fear"|"neutral">}
+
+Statement: "{{transcript}}"

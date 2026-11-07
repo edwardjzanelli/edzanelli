@@ -15,7 +15,8 @@
 //
 // Placeholders:
 //   {{name}}             a value from src/site.json (email, linkedin, resume, ...) or the page's metadata block
-//                        (title, description, path). og_title and og_description fall back to title and
+//                        (title, description, path). seniorminder_voice_commit and its _short form come from
+//                        vendor/seniorminder/VENDORED.json. og_title and og_description fall back to title and
 //                        description; og_image falls back to assets/og-image.jpg.
 //   {{header}}           the partial named by the page's "header" field
 //   {{footer}}           the partial named by the page's "footer" field; partials/footer.html when it has none
@@ -34,6 +35,11 @@ const out = join(root, "website");
 
 const read = (p) => readFileSync(p, "utf8");
 const site = JSON.parse(read(join(src, "site.json")));
+
+// The SeniorMinder commit the Voice page's measurement is built from, as the sync script stamped it.
+const vendored = JSON.parse(read(join(root, "vendor", "seniorminder", "VENDORED.json")));
+site.seniorminder_voice_commit = vendored.commit;
+site.seniorminder_voice_commit_short = vendored.commit.slice(0, 8);
 const partial = (name) => read(join(src, "partials", `${name}.html`)).trimEnd();
 
 function expand(text, meta) {
