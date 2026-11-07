@@ -36,8 +36,11 @@ async function analyzer(transcript, raw = "{}", { throws = false } = {}) {
   return { result: await a.analyze(transcript), asked };
 }
 
+// A usable answer, the default for tests about the request rather than the reply.
+const GOOD = '{"polarity_score": 0.1, "subjectivity_score": 0.2, "magnitude": 0.3, "dominant_emotion": "neutral"}';
+
 /* fetch mocked: answers OpenAI with `raw` as the completion's content, or with an HTTP status. */
-function mockOpenAI({ raw = "{}", status = 200 } = {}) {
+function mockOpenAI({ raw = GOOD, status = 200 } = {}) {
   const calls = [];
   globalThis.fetch = async (url, init) => {
     calls.push({ url: String(url), body: JSON.parse(init.body) });
@@ -98,24 +101,49 @@ test("under the analyzer's word floor, OpenAI is never called", async () => {
   assert.equal(REQUEST.min_words, 4);
 });
 
-test("every model answer, good or broken, ends where SeniorMinder ends", async () => {
+test("a good model answer ends where SeniorMinder ends; anything else is a failure, never a score", async () => {
   const t = "I slept badly and I am tired of waiting for the doctor.";
-  const answers = [
+  // Four usable values: the Lambda returns exactly what SeniorMinder stores.
+  const good = [
     '{"polarity_score": -0.4, "subjectivity_score": 0.7, "magnitude": 0.5, "dominant_emotion": "sadness"}',
     '```json\n{"polarity_score": 0.2, "subjectivity_score": 0.3, "magnitude": 0.1, "dominant_emotion": "neutral"}\n```',
-    "  {\"polarity_score\": 0.9, \"dominant_emotion\": \"joy\"}  ",
-    "Sure! Here is the sentiment: positive.",
-    '{"polarity_score": 0.5,',
-    "",
-    "null",
-    "[]",
+    '{"polarity_score": 0, "subjectivity_score": 0, "magnitude": 0, "dominant_emotion": "neutral"}',
+    '{"polarity_score": 1, "subjectivity_score": 1, "magnitude": 1, "dominant_emotion": "joy", "extra": true}',
   ];
-  for (const raw of answers) {
+  for (const raw of good) {
     mockOpenAI({ raw });
     const lambda = await sentiment(t);
     const { result } = await analyzer(t, raw);
-    assert.deepEqual(storedFromLambda(lambda), stored(result), `model answered ${JSON.stringify(raw)}`);
-    if (result === null) assert.ok(lambda.statusCode === 502 || storedFromLambda(lambda).every((v) => v === null));
+    assert.equal(lambda.statusCode, 200, raw);
+    assert.deepEqual(stored(JSON.parse(lambda.body)), stored(result), raw);
+    assert.deepEqual(Object.keys(JSON.parse(lambda.body)), FIELDS, "only the four fields");
+  }
+  // SeniorMinder's analyzer returns null for these too.
+  for (const raw of ["Sure! Here is the sentiment: positive.", '{"polarity_score": 0.5,', "", "null"]) {
+    mockOpenAI({ raw });
+    const lambda = await sentiment(t);
+    const { result } = await analyzer(t, raw);
+    assert.equal(result, null, raw);
+    assert.equal(lambda.statusCode, 502, raw);
+    assert.deepEqual(JSON.parse(lambda.body), { error: "sentiment unavailable" });
+  }
+  // The analyzer passes these through and SeniorMinder stores them field by field; the Lambda refuses them, so a
+  // partial, empty, mistyped or out-of-range answer can never reach the page as a score.
+  for (const raw of [
+    "{}", "[]",
+    '  {"polarity_score": 0.9, "dominant_emotion": "joy"}  ',
+    '{"polarity_score": "0", "subjectivity_score": "0", "magnitude": "0", "dominant_emotion": "neutral"}',
+    '{"polarity_score": 4, "subjectivity_score": 0.5, "magnitude": 0.5, "dominant_emotion": "joy"}',
+    '{"polarity_score": 0.2, "subjectivity_score": -0.1, "magnitude": 0.5, "dominant_emotion": "joy"}',
+    '{"polarity_score": 0.2, "subjectivity_score": 0.5, "magnitude": 0.5, "dominant_emotion": "boredom"}',
+    '{"polarity_score": null, "subjectivity_score": null, "magnitude": null, "dominant_emotion": null}',
+  ]) {
+    mockOpenAI({ raw });
+    const lambda = await sentiment(t);
+    const { result } = await analyzer(t, raw);
+    assert.notEqual(result, null, `the analyzer accepts ${raw}`);
+    assert.equal(lambda.statusCode, 502, raw);
+    assert.deepEqual(JSON.parse(lambda.body), { error: "sentiment unavailable" });
   }
   // An HTTP error: OpenAIProvider throws, the analyzer returns null, SeniorMinder stores nothing.
   mockOpenAI({ status: 500 });
@@ -124,6 +152,15 @@ test("every model answer, good or broken, ends where SeniorMinder ends", async (
   assert.equal(result, null);
   assert.equal(lambda.statusCode, 502);
   assert.deepEqual(storedFromLambda(lambda), stored(null));
+});
+
+test("an empty or all-space transcript is skipped, never sent", async () => {
+  for (const t of ["", " ", "\n\t "]) {
+    const calls = mockOpenAI({ raw: '{"polarity_score": 0, "subjectivity_score": 0, "magnitude": 0, "dominant_emotion": "neutral"}' });
+    const res = await sentiment(t);
+    assert.equal(calls.length, 0, JSON.stringify(t));
+    assert.deepEqual(JSON.parse(res.body), { skipped: "fewer than 4 words" });
+  }
 });
 
 test("the transcript never appears in a log line; its length and the outcome do", async () => {
@@ -135,6 +172,8 @@ test("the transcript never appears in a log line; its length and the outcome do"
     mockOpenAI({ raw: '{"polarity_score": 0.1, "subjectivity_score": 0.2, "magnitude": 0.3, "dominant_emotion": "neutral"}' });
     await sentiment(t);
     mockOpenAI({ raw: `not json, and it echoes: ${t}` });
+    await sentiment(t);
+    mockOpenAI({ raw: "{}" });
     await sentiment(t);
     mockOpenAI({ status: 429 });
     await sentiment(t);
@@ -153,6 +192,7 @@ test("the transcript never appears in a log line; its length and the outcome do"
   assert.ok(lines.some((l) => l === `sentiment chars=${t.length} outcome=scored`), lines.join("\n"));
   assert.ok(lines.some((l) => l === `sentiment chars=${t.length} outcome=failed (unparseable model output)`));
   assert.ok(lines.some((l) => l === `sentiment chars=${t.length} outcome=failed (OpenAI status 429)`));
+  assert.ok(lines.some((l) => l === `sentiment chars=${t.length} outcome=failed (no usable scores)`));
   assert.ok(lines.some((l) => l === "sentiment chars=18 outcome=skipped"));
 });
 

@@ -319,7 +319,7 @@ export function resultsFile(result, { wordsAvailable = true, commit, measuredAt,
 /* The export's sentiment: the four values as scored, and whether only the first 2,000 characters were; null
    whenever there is no score (off, waiting, too few words, failed). */
 export function sentimentFile(sentiment) {
-  if (!sentiment || sentiment.state !== "scored") return null;
+  if (!sentiment || sentiment.state !== "scored" || !usableScores(sentiment.scores)) return null;
   return { ...sentiment.scores, truncated: sentiment.truncated };
 }
 
@@ -343,14 +343,26 @@ export function sentimentText(transcript) {
   return { text: (end > 0 ? cut.slice(0, end) : cut.slice(0, SENTIMENT_MAX_CHARS)).trimEnd(), truncated: true };
 }
 
-const SENTIMENT_FIELDS = ["polarity_score", "subjectivity_score", "magnitude", "dominant_emotion"];
+export const SENTIMENT_EMOTIONS = ["joy", "sadness", "anger", "fear", "neutral"];   // the five the prompt allows
 
-/* The state a Lambda answer leaves the card in. */
+/* The four scores, or null unless all four are there and within the prompt's ranges: polarity -1 to 1, subjectivity
+   and magnitude 0 to 1, and one of the five emotions. The Lambda applies the same rule; the page checks again so a
+   broken answer can never be drawn, or saved, as a score. */
+const inRange = (v, lo, hi) => typeof v === "number" && Number.isFinite(v) && v >= lo && v <= hi;
+export function usableScores(data) {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return null;
+  const { polarity_score, subjectivity_score, magnitude, dominant_emotion } = data;
+  if (!inRange(polarity_score, -1, 1) || !inRange(subjectivity_score, 0, 1) || !inRange(magnitude, 0, 1)) return null;
+  if (!SENTIMENT_EMOTIONS.includes(dominant_emotion)) return null;
+  return { polarity_score, subjectivity_score, magnitude, dominant_emotion };
+}
+
+/* The state a Lambda answer leaves the card in: scored only with four usable values, skipped when the Lambda says
+   so, and failed for everything else, an error status, a body that is not JSON, or an answer short of a score. */
 export function sentimentFromResponse(ok, data, { truncated = false } = {}) {
   if (ok && data && typeof data.skipped === "string") return { state: "skipped", why: data.skipped };
-  if (ok && data && SENTIMENT_FIELDS.some((f) => f in data)) {
-    return { state: "scored", scores: Object.fromEntries(SENTIMENT_FIELDS.map((f) => [f, data[f] ?? null])), truncated };
-  }
+  const scores = ok ? usableScores(data) : null;
+  if (scores) return { state: "scored", scores, truncated };
   return { state: "failed", why: "I couldn't get a sentiment score this time." };
 }
 
@@ -392,18 +404,14 @@ export function sentimentCards(sentiment) {
   if (sentiment.state === "scored") {
     const lines = ["Scored on the words you spoke, including any you read."];
     if (sentiment.truncated) lines.push(`Scored on the first ${SENTIMENT_MAX_CHARS.toLocaleString("en-US")} characters of what the page heard.`);
-    return SENTIMENT_METRICS.map((m) => {
-      const v = sentiment.scores[m.key];
-      const has = v != null && (typeof v === "string" ? v !== "" : Number.isFinite(v));
-      return {
-        key: `sentiment.${m.key}`, group: "Sentiment", title: m.title, definition: m.definition, why: m.why, moves: m.moves,
-        state: has ? "value" : "needs",
-        value: has ? m.format(v) : "Not given",
-        unit: has ? m.unit : null,
-        detail: has ? null : "The model's answer left this out.",
-        note: lines.join(" ") || undefined,
-      };
-    });
+    return SENTIMENT_METRICS.map((m) => ({
+      key: `sentiment.${m.key}`, group: "Sentiment", title: m.title, definition: m.definition, why: m.why, moves: m.moves,
+      state: "value",
+      value: m.format(sentiment.scores[m.key]),
+      unit: m.unit,
+      detail: null,
+      note: lines.join(" "),
+    }));
   }
   const waiting = SENTIMENT_WAITING[sentiment.state];
   const value = waiting ? waiting.value : sentiment.state === "skipped" ? "Too few words" : "Not available";

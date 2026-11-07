@@ -136,9 +136,13 @@ box. Origins are checked as for every other request; no LiveAvatar key is needed
 
 - Over 2,000 characters, or not a string: `400`, OpenAI not called.
 - Fewer than 4 words: `200 {"skipped": "fewer than 4 words"}`, OpenAI not called.
-- Scored: `200 {"polarity_score", "subjectivity_score", "magnitude", "dominant_emotion"}`, each `null` if the
-  model left it out.
-- OpenAI failed, timed out after 8 s, or answered something that does not parse: `502 {"error": "sentiment unavailable"}`.
+- Scored: `200 {"polarity_score", "subjectivity_score", "magnitude", "dominant_emotion"}`, only when the model
+  gave all four within the prompt's ranges (polarity -1 to 1, subjectivity and magnitude 0 to 1, one of joy, sadness,
+  anger, fear, neutral).
+- OpenAI failed, timed out after 8 s, answered something that does not parse, or answered short of four usable values
+  (`{}`, `[]`, `null`, a missing or mistyped field, a number out of range, another emotion):
+  `502 {"error": "sentiment unavailable"}`. SentimentAnalyzer passes such answers through and SeniorMinder stores
+  them field by field; the Lambda never passes them on as a score.
 
 The transcript is never logged or stored; the one log line is `sentiment chars=<n> outcome=<scored|skipped|failed (why)>`.
 One difference from SeniorMinder: SeniorMinder's `LLMService.generateCompletion` puts a local-time preamble in

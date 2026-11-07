@@ -114,7 +114,19 @@ const SENTIMENT_REQUEST = JSON.parse(readFileSync(new URL("./sentiment-request.j
 const SENTIMENT_URL = "https://api.openai.com/v1/chat/completions";
 const SENTIMENT_TIMEOUT_MS = 8000;   // SeniorMinder's LLM_FETCH_TIMEOUT_MS
 const SENTIMENT_MAX_CHARS = 2000;
-const SENTIMENT_FIELDS = ["polarity_score", "subjectivity_score", "magnitude", "dominant_emotion"];
+const SENTIMENT_EMOTIONS = ["joy", "sadness", "anger", "fear", "neutral"];   // the five the prompt allows
+
+/* The four scores, or null unless the model gave all four within the ranges the prompt asks for. SentimentAnalyzer
+   returns whatever parses, {} and [] included, and SeniorMinder stores it field by field; here anything short of
+   four usable values is a failure, so a broken answer is never passed on as a score. */
+const inRange = (v, lo, hi) => typeof v === "number" && Number.isFinite(v) && v >= lo && v <= hi;
+export function usableScores(parsed) {
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+  const { polarity_score, subjectivity_score, magnitude, dominant_emotion } = parsed;
+  if (!inRange(polarity_score, -1, 1) || !inRange(subjectivity_score, 0, 1) || !inRange(magnitude, 0, 1)) return null;
+  if (!SENTIMENT_EMOTIONS.includes(dominant_emotion)) return null;
+  return { polarity_score, subjectivity_score, magnitude, dominant_emotion };
+}
 
 // The prompt for one transcript, as SentimentAnalyzer builds it. split/join, not replace, so a "$" in the
 // transcript is never read as a replacement pattern.
@@ -128,7 +140,7 @@ async function scoreSentiment(transcript) {
   const outcome = (what) => console.log(`sentiment chars=${chars} outcome=${what}`);
   const failed = (why) => { outcome(`failed (${why})`); return json(502, { error: "sentiment unavailable" }); };
 
-  if (tooFewWords(transcript)) {
+  if (tooFewWords(transcript)) {   // also an empty or all-space transcript: never sent to OpenAI
     outcome("skipped");
     return json(200, { skipped: `fewer than ${SENTIMENT_REQUEST.min_words} words` });
   }
@@ -161,8 +173,10 @@ async function scoreSentiment(transcript) {
   } catch {
     return failed("unparseable model output");
   }
+  const scores = usableScores(parsed);
+  if (!scores) return failed("no usable scores");
   outcome("scored");
-  return json(200, Object.fromEntries(SENTIMENT_FIELDS.map((f) => [f, parsed?.[f] ?? null])));
+  return json(200, scores);
 }
 
 const json = (statusCode, body) => ({

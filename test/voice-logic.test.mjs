@@ -23,6 +23,7 @@ import {
   sentimentCards,
   sentimentFromResponse,
   sentimentText,
+  usableScores,
 } from "../src/js/voice-logic.js";
 import { METRIC_PATHS } from "../vendor/seniorminder/packages/voice/src/ReliabilityFloors.js";
 
@@ -300,8 +301,8 @@ test("sentiment: a failed Lambda, an unreadable answer or a network error says s
     assert.equal(card.value, "Not available");
     assert.match(card.detail, /couldn't get a sentiment score/);
   }
-  const partial = sentimentCards(sentimentFromResponse(true, { polarity_score: 0.9, dominant_emotion: "joy" }));
-  assert.deepEqual(partial.map((c) => c.state), ["value", "needs", "needs", "value"], "a field the model left out says so");
+  const partial = sentimentFromResponse(true, { polarity_score: 0.9, dominant_emotion: "joy" });
+  assert.equal(partial.state, "failed", "a partial answer is a failure, not a score");
 });
 
 test("sentiment: over 2,000 characters is cut at a word boundary, never over the Lambda's cap", () => {
@@ -402,4 +403,27 @@ test("start button: a late sentiment reply from the previous recording is droppe
   const js = readFileSync(new URL("../src/js/voice.js", import.meta.url), "utf8");
   assert.match(js, /const mine = flow\.ticket\(\);[\s\S]*if \(flow\.isCurrent\(mine\)\) showSentiment\(sentiment\);/);
   assert.ok(!/\bbusy\b|\bgeneration\b/.test(js), "no second copy of the state outside the flow");
+});
+
+test("sentiment: only four values inside the prompt's ranges are a score", () => {
+  assert.deepEqual(usableScores(SCORES), SCORES);
+  assert.deepEqual(usableScores({ ...SCORES, extra: 1 }), SCORES, "extra fields are dropped");
+  assert.deepEqual(usableScores({ polarity_score: -1, subjectivity_score: 0, magnitude: 1, dominant_emotion: "neutral" }),
+    { polarity_score: -1, subjectivity_score: 0, magnitude: 1, dominant_emotion: "neutral" }, "the ends of each range count");
+  for (const bad of [
+    null, undefined, "", 0, [], {}, [SCORES],
+    { ...SCORES, polarity_score: null }, { ...SCORES, polarity_score: "0" }, { ...SCORES, polarity_score: 1.01 },
+    { ...SCORES, polarity_score: NaN }, { ...SCORES, subjectivity_score: -0.1 }, { ...SCORES, magnitude: 2 },
+    { ...SCORES, dominant_emotion: "boredom" }, { ...SCORES, dominant_emotion: "" }, { ...SCORES, dominant_emotion: null },
+    { polarity_score: 0.9, dominant_emotion: "joy" },
+  ]) {
+    assert.equal(usableScores(bad), null, JSON.stringify(bad));
+    assert.equal(sentimentFromResponse(true, bad).state, bad && typeof bad === "object" && "skipped" in bad ? "skipped" : "failed", JSON.stringify(bad));
+  }
+  assert.equal(sentimentFromResponse(false, SCORES).state, "failed", "an error status is a failure whatever the body says");
+});
+
+test("download: a sentiment that is not four usable values exports null, even if marked scored", () => {
+  assert.equal(fileFor(measurement(), { sentiment: { state: "scored", scores: { ...SCORES, polarity_score: "0" }, truncated: false } }).sentiment, null);
+  assert.equal(fileFor(measurement(), { sentiment: sentimentFromResponse(true, {}) }).sentiment, null);
 });

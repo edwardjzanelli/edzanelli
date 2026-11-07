@@ -326,6 +326,10 @@ async function updateSentiment() {
     showSentiment({ state: "failed", why: "Whisper could not hear any words in this recording, so there were none to score." });
     return;
   }
+  if (shown.transcript.trim() === "") {   // Whisper ran and heard nothing: there is nothing to send
+    showSentiment({ state: "skipped", why: "no words" });
+    return;
+  }
   const mine = flow.ticket();
   showSentiment({ state: "pending" });
   const { text, truncated } = sentimentText(shown.transcript);
