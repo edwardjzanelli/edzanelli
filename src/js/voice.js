@@ -13,6 +13,7 @@
    SeniorMinder's sentiment prompt and model at OpenAI. */
 
 import {
+  GROUP_NOTES,
   MAX_SECONDS,
   countdown,
   createFlow,
@@ -275,6 +276,7 @@ function renderCards(container, cards) {
     if (c.group !== group) {
       group = c.group;
       container.append(node("h3", "metric-group", group));
+      if (GROUP_NOTES[group]) container.append(node("p", "metric-group-note", GROUP_NOTES[group]));
       grid = node("div", "metric-grid");
       container.append(grid);
     }

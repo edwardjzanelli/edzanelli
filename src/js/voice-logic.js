@@ -85,8 +85,16 @@ const percent = (digits) => Object.assign((v) => (v * 100).toFixed(digits), { fi
 const PERIODS_NOTE = "A glottal period is one vibration of the vocal folds.";
 const CONNECTED = "Connected speech reads higher than the sustained-vowel figures published in clinical literature, so a number here is not comparable with those.";
 
-/* One entry per row-B metric, in the order the cards are shown: rate and pauses, pitch, loudness, voice quality,
-   inflection. `path` is where measureVoice puts it; `format` turns its number into the shown value. */
+/* One entry per row-B metric, in the order the cards are shown: rate and pauses, pitch, overall loudness, loudness
+   variation, voice quality, inflection. `path` is where measureVoice puts it; `format` turns its number into the
+   shown value. */
+/* A line shown once under a group's heading, above its cards. Absolute loudness and loudness variation are kept
+   apart because the microphone's distance moves the first and barely moves the second. */
+export const GROUP_NOTES = {
+  "Overall loudness": "These mostly reflect how far you are from the microphone and how loud the room is. If they read low, move closer to the microphone, the same advice I’d give a caregiver setting up a device where a senior usually sits. Over time they only mean something if the microphone and where you sit stay the same.",
+  "Loudness variation": "This is how much your loudness moves while you talk. Moving closer or farther from the microphone barely changes it, so it is the loudness reading that holds up from one recording to the next.",
+};
+
 export const METRICS = [
   {
     key: "cadence.wpm", path: ["cadence", "wpm"], group: "Rate and pauses", title: "Speaking rate",
@@ -152,35 +160,35 @@ export const METRICS = [
     moves: "Tiredness narrows it; reading with expression widens it; the passage itself matters, which is why the same text helps.",
   },
   {
-    key: "volume.mean_db", path: ["volume", "mean_db"], group: "Loudness", title: "Average loudness",
+    key: "volume.mean_db", path: ["volume", "mean_db"], group: "Overall loudness", title: "Average loudness",
     format: fixed(1), unit: "dBFS",
     definition: "How loud your speech was on average, in decibels below the loudest level the recording can hold.",
     why: "Loudness takes breath support; a voice that has grown quieter can mean less energy.",
     moves: "Mic distance moves it more than anything else; then tiredness, illness and the room.",
   },
   {
-    key: "volume.std_dev", path: ["volume", "std_dev"], group: "Loudness", title: "Loudness variation",
-    format: fixed(1), unit: "dB",
-    definition: "How much your loudness moved around its average, as a standard deviation.",
-    why: "Emphasis lives in loudness as much as pitch; less movement means a flatter delivery.",
-    moves: "Tiredness narrows it; moving toward and away from the mic widens it; expressive reading widens it too.",
-  },
-  {
-    key: "volume.p5_db", path: ["volume", "p5_db"], group: "Loudness", title: "Quiet end of loudness",
+    key: "volume.p5_db", path: ["volume", "p5_db"], group: "Overall loudness", title: "Quiet end of loudness",
     format: fixed(1), unit: "dBFS",
     definition: "The level your speech was above 95% of the time: the quiet end, such as the ends of phrases.",
     why: "Trailing off at the ends of phrases shows up here first.",
     moves: "Tiredness lowers it; mic distance lowers it; a noisy room raises it.",
   },
   {
-    key: "volume.p95_db", path: ["volume", "p95_db"], group: "Loudness", title: "Loud end of loudness",
+    key: "volume.p95_db", path: ["volume", "p95_db"], group: "Overall loudness", title: "Loud end of loudness",
     format: fixed(1), unit: "dBFS",
     definition: "The level your speech was below 95% of the time: the loud end, without the odd shout.",
     why: "It shows how much push the voice still has when it needs it.",
     moves: "Mic distance moves it most; then effort, emphasis and tiredness.",
   },
   {
-    key: "volume.p5_p95_range_db", path: ["volume", "p5_p95_range_db"], group: "Loudness", title: "Loudness range",
+    key: "volume.std_dev", path: ["volume", "std_dev"], group: "Loudness variation", title: "Loudness variation",
+    format: fixed(1), unit: "dB",
+    definition: "How much your loudness moved around its average, as a standard deviation.",
+    why: "Emphasis lives in loudness as much as pitch; less movement means a flatter delivery.",
+    moves: "Tiredness narrows it; moving toward and away from the mic widens it; expressive reading widens it too.",
+  },
+  {
+    key: "volume.p5_p95_range_db", path: ["volume", "p5_p95_range_db"], group: "Loudness variation", title: "Loudness range",
     format: fixed(1), unit: "dB",
     definition: "The distance between the quiet end and the loud end above.",
     why: "Like pitch range, it narrows when a voice goes flat.",

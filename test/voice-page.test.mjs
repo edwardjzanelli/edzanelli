@@ -212,3 +212,24 @@ test("a genuine neutral score from the model still shows as a score", async () =
   await p.settle(() => /neutral/.test(p.sentimentText()), "the score");
   assert.deepEqual(p.download().sentiment, { ...neutral, truncated: false });
 });
+
+test("the loudness cards render as two groups, each heading followed once by its line", async () => {
+  const p = await page({ whisperText: HEARD, answer: () => ({ json: SCORES }) });
+  await p.record();
+  const kids = p.el("cards").children;
+  const at = (title) => kids.findIndex((k) => k.className === "metric-group" && k.textContent === title);
+  const notes = kids.filter((k) => k.className === "metric-group-note");
+  assert.equal(at("Loudness"), -1);
+  for (const [title, starts, cards] of [
+    ["Overall loudness", "These mostly reflect how far you are from the microphone", ["Average loudness", "Quiet end of loudness", "Loud end of loudness"]],
+    ["Loudness variation", "This is how much your loudness moves while you talk.", ["Loudness variation", "Loudness range"]],
+  ]) {
+    const i = at(title);
+    assert.ok(i >= 0, title);
+    assert.ok(kids[i + 1].className === "metric-group-note" && kids[i + 1].textContent.startsWith(starts), `${title}: its line`);
+    assert.equal(notes.filter((n) => n.textContent.startsWith(starts)).length, 1, `${title}: the line appears once`);
+    assert.equal(kids[i + 2].className, "metric-grid");
+    assert.deepEqual(kids[i + 2].children.map((c) => c.children[0].textContent), cards, `${title}: its cards`);
+  }
+  assert.equal(notes.length, 2, "no other group has a line");
+});

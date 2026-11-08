@@ -9,6 +9,7 @@ import { OfflineAudioContext } from "node-web-audio-api";
 
 import {
   CLIP_HOLD_SECONDS,
+  GROUP_NOTES,
   METRICS,
   QUIET_SECONDS,
   createMeter,
@@ -135,8 +136,44 @@ const card = (cards, key) => cards.find((c) => c.key === key);
 test("results: one card per row-B metric, in the page's order", () => {
   assert.deepEqual(METRICS.map((m) => m.key).sort(), Object.keys(METRIC_PATHS).sort());
   assert.deepEqual(METRICS.map((m) => m.path), METRICS.map((m) => METRIC_PATHS[m.key]));
-  assert.deepEqual([...new Set(METRICS.map((m) => m.group))], ["Rate and pauses", "Pitch", "Loudness", "Voice quality", "Inflection"]);
+  assert.deepEqual([...new Set(METRICS.map((m) => m.group))], ["Rate and pauses", "Pitch", "Overall loudness", "Loudness variation", "Voice quality", "Inflection"]);
   assert.equal(resultCards(measurement()).length, 19);
+});
+
+test("results: loudness is two groups, overall loudness and its variation, each with its line once", () => {
+  const keysIn = (group) => resultCards(measurement()).filter((c) => c.group === group).map((c) => c.key);
+  assert.deepEqual(keysIn("Overall loudness"), ["volume.mean_db", "volume.p5_db", "volume.p95_db"]);
+  assert.deepEqual(keysIn("Loudness variation"), ["volume.std_dev", "volume.p5_p95_range_db"]);
+  assert.deepEqual(keysIn("Loudness"), []);
+  assert.deepEqual(Object.keys(GROUP_NOTES), ["Overall loudness", "Loudness variation"]);
+  assert.equal(GROUP_NOTES["Overall loudness"], "These mostly reflect how far you are from the microphone and how loud the room is. If they read low, move closer to the microphone, the same advice I’d give a caregiver setting up a device where a senior usually sits. Over time they only mean something if the microphone and where you sit stay the same.");
+  assert.equal(GROUP_NOTES["Loudness variation"], "This is how much your loudness moves while you talk. Moving closer or farther from the microphone barely changes it, so it is the loudness reading that holds up from one recording to the next.");
+});
+
+test("copy: the watch table splits loudness into two rows, variation first, each cell labelled for the phone cards", () => {
+  const html = readFileSync(new URL("../src/pages/voice.html", import.meta.url), "utf8");
+  const rows = [...html.matchAll(/<tr><th scope="row">(.*?)<\/th>(.*?)<\/tr>/g)];
+  const names = rows.map((r) => r[1]);
+  assert.ok(!names.includes("Volume level"), "the Volume level row is gone");
+  const v = names.indexOf("Loudness variation"), o = names.indexOf("Overall loudness");
+  assert.ok(v >= 0 && o === v + 1, "Loudness variation, then Overall loudness, in the old row's place");
+  assert.equal(names[v - 1], "Average pitch");
+  assert.equal(names[o + 1], "Harmonics-to-noise ratio");
+  const text = (cell) => cell.replace(/<sup>.*?<\/sup>/g, (m) => " " + m.match(/\[\d+\]/)[0]).replace(/<[^>]+>/g, "");
+  const cells = (row) => [...row[2].matchAll(/<td data-label="([^"]+)">(.*?)<\/td>/g)].map((c) => [c[1], text(c[2])]);
+  assert.deepEqual(cells(rows[v]), [
+    ["A lasting change can go with", "A flatter, less varied loudness can go with Parkinson’s [4], low mood [5], or tiredness."],
+    ["What else moves it", "Barely affected by distance from the microphone; a noisy room can narrow it"],
+  ]);
+  assert.deepEqual(cells(rows[o]), [
+    ["A lasting change can go with", "A voice that gets quieter over time can go with Parkinson’s, where voice changes are often an early sign [4], and with weakness, breathlessness or tiredness. It only means something when the microphone and where you sit stay the same; if it reads low, move the microphone closer first."],
+    ["What else moves it", "Distance from the microphone, above all"],
+  ]);
+  // the phone cards label each cell from data-label, so every row's cells carry the two column names
+  const head = [...html.match(/<thead>([\s\S]*?)<\/thead>/)[1].matchAll(/<th scope="col">(.*?)<\/th>/g)].map((m) => m[1]);
+  for (const r of rows) assert.deepEqual(cells(r).map((c) => c[0]), head.slice(1), r[1]);
+  const css = readFileSync(new URL("../src/css/styles.css", import.meta.url), "utf8");
+  assert.match(css, /@media \(max-width: 639px\)[\s\S]*\.voice-watch td::before \{ content: attr\(data-label\)/);
 });
 
 test("results: a floored metric shows Needs more speech, with its requirement and what it had", () => {
