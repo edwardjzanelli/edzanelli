@@ -127,8 +127,8 @@ test("a good model answer ends where SeniorMinder ends; anything else is a failu
     assert.equal(lambda.statusCode, 502, raw);
     assert.deepEqual(JSON.parse(lambda.body), { error: "sentiment unavailable" });
   }
-  // The analyzer passes these through and SeniorMinder stores them field by field; the Lambda refuses them, so a
-  // partial, empty, mistyped or out-of-range answer can never reach the page as a score.
+  // Since SeniorMinder 28020b78 the analyzer refuses these too, returning null so SeniorMinder stores nothing; the
+  // Lambda refuses them as well, so a partial, empty, mistyped or out-of-range answer can never reach the page as a score.
   for (const raw of [
     "{}", "[]",
     '  {"polarity_score": 0.9, "dominant_emotion": "joy"}  ',
@@ -141,7 +141,7 @@ test("a good model answer ends where SeniorMinder ends; anything else is a failu
     mockOpenAI({ raw });
     const lambda = await sentiment(t);
     const { result } = await analyzer(t, raw);
-    assert.notEqual(result, null, `the analyzer accepts ${raw}`);
+    assert.equal(result, null, `the analyzer refuses ${raw}`);
     assert.equal(lambda.statusCode, 502, raw);
     assert.deepEqual(JSON.parse(lambda.body), { error: "sentiment unavailable" });
   }
