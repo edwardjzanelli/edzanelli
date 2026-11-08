@@ -335,6 +335,31 @@ test("copy: each reference marker links to its entry, and each entry links out i
   assert.ok(why.indexOf("That is why SeniorMinder compares") < why.indexOf("This page measures once"), "the new copy comes before the measures-once line");
 });
 
+test("copy: every marker [1] to [5] reaches its reference, and every reference links out", () => {
+  const html = readFileSync(new URL("../src/pages/voice.html", import.meta.url), "utf8");
+  const markers = [...html.matchAll(/<sup><a href="#voice-ref-(\d+)" id="(voice-cite-[\d-]+)">\[(\d+)\]<\/a><\/sup>/g)];
+  // every bracketed number on the page is one of these links, so none is left as plain text
+  assert.equal((html.match(/\[\d+\]/g) || []).length, markers.length, "a marker that is not a link");
+  const ids = markers.map((m) => m[2]);
+  assert.equal(new Set(ids).size, ids.length, "marker ids are unique");
+  for (const [, target, , shown] of markers) {
+    assert.equal(target, shown, `marker [${shown}] points at its own number`);
+    assert.ok(html.includes(`<li id="voice-ref-${target}">`), `marker [${shown}] has a reference`);
+  }
+  const refs = [...html.matchAll(/<li id="voice-ref-(\d+)">(.*?)<\/li>/g)];
+  assert.deepEqual(refs.map((r) => Number(r[1])), [1, 2, 3, 4, 5], "references 1 to 5, in order");
+  for (const [, n, body] of refs) {
+    assert.match(body, /<a href="https:\/\/[^"]+" target="_blank" rel="noopener">Link<\/a>$/, `reference ${n} links out in a new tab`);
+    assert.ok(markers.some((m) => m[1] === n), `reference ${n} is cited`);
+  }
+  const why = html.slice(html.indexOf('<section class="voice-why">'));
+  const at = (s) => { const i = why.indexOf(s); assert.ok(i >= 0, s); return i; };
+  assert.ok(at("Why measure a voice over time") < at("What to watch for, and why"));
+  assert.ok(at("That is why SeniorMinder compares") < at("What to watch for, and why"));
+  assert.ok(at("What I would watch most closely") < at("This page measures once"));
+  for (const once of ["That is why SeniorMinder compares", "This page measures once"]) assert.equal(why.split(once).length, 2, once);
+});
+
 // ---------- the Start button ----------
 
 /* Walks a flow the way voice.js does, from a press of Start to the cards on show. */

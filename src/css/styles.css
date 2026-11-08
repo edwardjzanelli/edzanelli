@@ -313,6 +313,16 @@ details.note.limits p { margin-top: 0.5rem; }
 .voice-why h2 { text-align: center; margin-bottom: 1.25rem; }
 .voice-why sup { line-height: 0; font-size: 0.7em; }
 .voice-why sup a { text-decoration: none; }
+.voice-watch-title { margin: 2.5rem 0 1.25rem; }
+.voice-watch { width: 100%; border-collapse: separate; border-spacing: 0; margin: 1.5rem 0 2rem; font-size: 0.92rem; background: var(--card);
+               border: 1px solid var(--rule-soft); border-radius: 18px; box-shadow: var(--shadow); overflow: hidden; }
+.voice-watch th, .voice-watch td { text-align: left; vertical-align: top; padding: 0.85rem 1rem; border-top: 1px solid var(--rule-soft); color: var(--ink-light); }
+.voice-watch thead th { border-top: 0; font-family: var(--sans); font-size: 0.78rem; font-weight: 400; text-transform: uppercase; letter-spacing: 0.12em; }
+.voice-watch tbody th { font-weight: 500; color: var(--navy); width: 26%; }
+.voice-watch td:last-child { width: 26%; font-style: italic; }
+.voice-watch-closely { font-size: 1.2rem; margin: 0 0 0.75rem; }
+.voice-watch-list { padding-left: 1.5rem; margin-bottom: 1.5rem; }
+.voice-watch-list li { color: var(--ink-light); margin-bottom: 0.6rem; }
 .voice-refs-title { font-size: 1rem; margin: 1.75rem 0 0.5rem; }
 .voice-refs { font-size: 0.88rem; color: var(--ink-light); padding-left: 1.5rem; }
 .voice-refs li { margin-bottom: 0.4rem; }
@@ -348,6 +358,18 @@ details.note.limits p { margin-top: 0.5rem; }
   .voice-controls .btn { width: 100%; }
   .turn { grid-template-columns: 1fr; gap: 2px; }
   .card { padding: 1.5rem; }
+  /* The watch table becomes one card per reading: the reading as its title, each cell under its column's name. */
+  .voice-watch, .voice-watch tbody, .voice-watch tr, .voice-watch th, .voice-watch td { display: block; width: auto; }
+  .voice-watch { background: none; border: 0; box-shadow: none; border-radius: 0; overflow: visible; }
+  .voice-watch thead { display: none; }
+  .voice-watch tr { background: var(--card); border: 1px solid var(--rule-soft); border-radius: 18px; box-shadow: var(--shadow);
+                    padding: 1.25rem 1.5rem; margin-bottom: 1rem; }
+  .voice-watch th, .voice-watch td { border-top: 0; padding: 0; }
+  .voice-watch tbody th { width: auto; margin-bottom: 0.6rem; }
+  .voice-watch td { margin-bottom: 0.6rem; }
+  .voice-watch td:last-child { width: auto; margin-bottom: 0; }
+  .voice-watch td::before { content: attr(data-label); display: block; font-style: normal; font-size: 0.72rem; text-transform: uppercase;
+                            letter-spacing: 0.12em; color: var(--ink-light); opacity: 0.8; margin-bottom: 0.2rem; }
 }
 
 @media (min-width: 640px) {
